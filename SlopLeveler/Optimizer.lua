@@ -88,11 +88,19 @@ function O.rules(steps, idx)
   return must
 end
 
-local function dist(p, q)
+local function straight(p, q)
   if p[1] ~= q[1] then return 1e7 end
   local dx, dy = p[2] - q[2], p[3] - q[3]
   return math.sqrt(dx * dx + dy * dy)
 end
+
+-- Travel cost between two {cont, wx, wy}: flight-aware when Flight.lua knows
+-- your flight points (in walking yards), else straight-line yards.
+local function dist(p, q)
+  if ns.Flight and ns.Flight.travel then return (ns.Flight.travel(p, q)) end
+  return straight(p, q)
+end
+O.dist = dist
 
 -- Cost of visiting pos in `order` (window positions), starting at `from`.
 function O.cost(from, pos, order)
@@ -126,10 +134,17 @@ function O.solve(from, pos, must)
   local EPS = 1e-3
   local count = { [0] = 0 }
   for mask = 1, full do count[mask] = count[math.floor(mask / 2)] + mask % 2 end
+  -- travel costs once per solve (the loops below would otherwise call it ~100k times)
+  local D0, D = {}, {}
+  for a = 1, n do
+    D0[a] = dist(from, pos[a])
+    D[a] = {}
+    for b = 1, n do D[a][b] = a == b and 0 or dist(pos[a], pos[b]) end
+  end
   local dp, par = {}, {}
   for k = 1, n do
     if need[k] == 0 then
-      dp[pow[k] * n + k] = dist(from, pos[k]) + EPS * k * n
+      dp[pow[k] * n + k] = D0[k] + EPS * k * n
     end
   end
   for mask = 1, full do
@@ -139,7 +154,7 @@ function O.solve(from, pos, must)
         for k = 1, n do
           if not has(mask, k) and allowed(mask, k) then
             local nm = mask + pow[k]
-            local c = here + dist(pos[last], pos[k]) + EPS * k * (n - count[mask])
+            local c = here + D[last][k] + EPS * k * (n - count[mask])
             local key = nm * n + k
             if not dp[key] or c < dp[key] then dp[key], par[key] = c, last end
           end

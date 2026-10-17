@@ -134,6 +134,7 @@ SlashCmdList.SLOPLEVELER = function(msg)
     end
     if s.opt then C.print("optional step") end
   elseif cmd == "swap" then ns.swapCommand(args)
+  elseif cmd == "flight" then ns.Flight.report()
   elseif cmd == "questlog" or cmd == "ql" then
     if args == "debug" then ns.QuestLog.debug()
     elseif args == "accept off" or args == "accept on" then

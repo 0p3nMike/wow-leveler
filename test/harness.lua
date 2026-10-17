@@ -755,6 +755,36 @@ lev("ql debug")
 check(W.printed[#W.printed - 1]:find("placed", 1, true) or W.printed[#W.printed]:find("no position", 1, true), "ql debug reports")
 lev("optimize suggest")
 
+-- flights: learned at the flight master, measured, used when quicker
+function GetTaxiMapID() return 1429 end
+C_TaxiMap = { GetAllTaxiNodes = function() return {
+  { nodeID = 1, name = "Brill", state = 0, position = CreateVector2D(0.02, 0.02) },
+  { nodeID = 2, name = "Far Camp", state = 1, position = CreateVector2D(0.98, 0.98) },
+  { nodeID = 3, name = "Unknown Spot", state = 2, position = CreateVector2D(0.5, 0.5) },
+} end }
+SlopLevelerCharDB.flights, SlopLevelerCharDB.speed = nil, nil
+fire("TAXIMAP_OPENED")
+check(#ns.Flight.known() == 2, "learns the 2 known flight points, not the unknown one")
+local walk = ns.Flight.travel({ 0, 20, 20 }, { 0, 980, 980 })
+local direct = math.sqrt(2) * 960
+check(walk < direct * 0.6, ("far trip: flying (%d) beats walking (%d)"):format(walk, direct))
+local short = ns.Flight.travel({ 0, 20, 20 }, { 0, 120, 20 })
+check(math.abs(short - 100) < 1e-6, "short trip: still walks")
+-- the arrow sends you to the flight master first
+ns.Route.Register({ name = "fly test", steps = { { act = "complete", q = 1201, obj = 1, map = 1429, cont = 0, wx = 980, wy = 980 } } })
+W.log = { [1201] = { complete = false, objs = { { finished = false } } } }
+W.map, W.x, W.y = 1429, 0.03, 0.03
+lev("route use fly test")
+check((ns.Way.current().text or ""):find("Fly", 1, true) and ns.Way.current().wx == 20, "arrow: to the Brill flight master, 'Fly Brill -> Far Camp'")
+-- a real flight measures the speed
+W.gt = W.gt + 0.5; tick(1)                               -- standing at the flight master
+W.taxi = true; W.gt = W.gt + 0.5; tick(1)                -- take off
+W.gt = W.gt + 40; W.x, W.y = 0.97, 0.97; tick(1)         -- flying
+W.taxi = false; W.gt = W.gt + 0.5; tick(1)               -- landed, 41 s after the last ground sample
+check(ns.Flight.measured() and math.abs(ns.Flight.fly() - math.sqrt(2) * 940 / 41) < 0.5, ("flight speed measured: %.1f yd/s"):format(ns.Flight.fly()))
+lev("flight")
+SlopLevelerCharDB.flights = nil
+
 -- the solver is exact: compare with trying every order
 math.randomseed(7)
 for trial = 1, 5 do

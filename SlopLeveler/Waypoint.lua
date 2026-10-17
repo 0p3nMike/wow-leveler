@@ -121,6 +121,18 @@ function W.tick(force)
     end
     routeTarget = wi <= #walk and at(walk[wi], desc) or pinTarget
   end
+  -- a flight is quicker (Flight.lua): point at the flight master first
+  if routeTarget and routeTarget.wx and m ~= "work" and ns.Flight and not C.try(UnitOnTaxi, "player") then
+    local pm, px, py = C.mapPos()
+    local pc, pwx, pwy = C.worldPos(pm, px, py)
+    if pc then
+      local _, leg = ns.Flight.travel({ pc, pwx, pwy }, { routeTarget.cont, routeTarget.wx, routeTarget.wy })
+      if leg then
+        routeTarget = { cont = leg.from.cont, wx = leg.from.wx, wy = leg.from.wy, r = 10,
+          text = ("|cff80c0ffFly|r %s -> %s"):format(leg.from.name, leg.to.name) }
+      end
+    end
+  end
   if m ~= mode then
     mode = m
     ns.Fire("SL_MODE", m, s)

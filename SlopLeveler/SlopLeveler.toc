@@ -20,6 +20,7 @@ Assist.lua
 Splits.lua
 Downtime.lua
 MapPath.lua
+Flight.lua
 Optimizer.lua
 QuestLog.lua
 UI.lua
