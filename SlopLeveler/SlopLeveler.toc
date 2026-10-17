@@ -21,6 +21,7 @@ Splits.lua
 Downtime.lua
 MapPath.lua
 Optimizer.lua
+QuestLog.lua
 UI.lua
 Commands.lua
 routes\Example.lua

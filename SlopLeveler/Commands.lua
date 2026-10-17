@@ -12,6 +12,7 @@ local HELP = {
   "/lev route fromrun <n> [name]   turn recorded run n into a route and follow it",
   "/lev route delete <name>   delete a saved route   · /lev route off",
   "/lev skip · /lev back · /lev step <n>",
+  "/lev questlog (/lev ql)    no guide: your quest log + nearby quest givers, shortest order · ql debug · ql accept on|off",
   "/lev optimize              do the next steps in the shortest order (from where you stand) · optimize auto|suggest|off|clear",
   "/swap                      set this step (and its quest) aside for now; back on level-up · /swap back · /swap list",
   "/lev export [route]        the route as Lua, for a routes/*.lua file",
@@ -133,6 +134,17 @@ SlashCmdList.SLOPLEVELER = function(msg)
     end
     if s.opt then C.print("optional step") end
   elseif cmd == "swap" then ns.swapCommand(args)
+  elseif cmd == "questlog" or cmd == "ql" then
+    if args == "debug" then ns.QuestLog.debug()
+    elseif args == "accept off" or args == "accept on" then
+      ns.db.qlAccept = args == "accept on"
+      ns.QuestLog.rebuild(true)
+      C.print("quest log mode picks up new quests: %s", args:sub(8))
+    else
+      ns.QuestLog.start()
+      C.print("quest log mode: your quests, shortest order from here (%d placed, %d without a position)",
+        #ns.Engine.route().steps, #ns.QuestLog.unplaced)
+    end
   elseif cmd == "optimize" or cmd == "opt" then
     local O = ns.Optimizer
     if args == "auto" or args == "off" or args == "suggest" then

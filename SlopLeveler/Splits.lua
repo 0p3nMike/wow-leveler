@@ -22,6 +22,8 @@ local function attempt()
   local cdb = ns.cdb
   local route = cdb.route
   if not route then return nil end
+  local r = ns.Engine.route()
+  if r and r.dynamic then return nil end -- quest log mode rebuilds its steps: nothing to compare
   if not cdb.split or cdb.split.route ~= route then
     -- segStep is set by SL_STEP: a step is only timed once it has been on screen
     cdb.split = { route = route, played = 0, segStart = 0, segStep = nil, delta = 0, timed = 0, golds = 0 }

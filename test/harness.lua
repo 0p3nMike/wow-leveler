@@ -140,6 +140,8 @@ C_QuestLog = {
   GetNumQuestLogEntries = function() return #logList() end,
   GetInfo = function(i) local q = logList()[i]; return q and { questID = q, isHeader = false } end,
   GetQuestObjectives = function(q) return W.log[q] and W.log[q].objs or {} end,
+  GetQuestsOnMap = function(map) return (W.poi or {})[map] or {} end,
+  GetNextWaypoint = function(q) local w = (W.wp or {})[q]; if w then return w[1], w[2], w[3] end end,
 }
 
 -- quest frame / gossip state for Assist
@@ -706,6 +708,51 @@ for _ = 1, 4 do W.gt = W.gt + 0.5; tick(1) end
 check(ns.Engine.index() == 1, "out of it: the east quest you are standing next to: " .. ns.Engine.index())
 lev("optimize clear")
 check(ns.db.optimize == "suggest" and ns.cdb.plan == nil, "clear stops auto so it is not re-applied")
+lev("optimize suggest")
+
+-- quest log mode: no guide, the game's own quest positions + quest givers
+C_QuestLine = {
+  RequestQuestLinesForMap = function() end,
+  GetAvailableQuestLines = function(map) return (W.lines or {})[map] or {} end,
+}
+lev("optimize auto")
+W.log = {
+  [1001] = { complete = false, title = "Bat Wings", objs = { { text = "Bat wing: 2/6", finished = false } } },
+  [1002] = { complete = true, title = "Done Thing", objs = { { text = "x: 1/1", finished = true } } },
+  [1003] = { complete = false, title = "Somewhere Else", objs = { { text = "y: 0/1", finished = false } } },
+}
+W.turnedIn = {}
+W.poi = { [1429] = { { questID = 1001, x = 0.10, y = 0.0 }, { questID = 1002, x = 0.90, y = 0.0 } } }
+W.wp = {}
+W.lines = { [1429] = {
+  { questID = 1004, questName = "Nearby Pickup", x = 0.12, y = 0.0, isHidden = false },
+  { questID = 1005, questName = "Grey Quest", x = 0.13, y = 0.0, isHidden = true },
+} }
+W.map, W.x, W.y = 1429, 0.05, 0.01
+lev("questlog")
+local QLr = ns.Engine.route()
+local acts = {}
+for _, s in ipairs(QLr.steps) do acts[#acts + 1] = s.act .. s.q end
+table.sort(acts)
+check(table.concat(acts, ",") == "accept1004,complete1001,turnin1002", "quest log steps: " .. table.concat(acts, ","))
+check(#ns.QuestLog.unplaced == 1 and ns.QuestLog.unplaced[1].q == 1003, "a quest with no position is listed, not routed")
+check(ns.Engine.step().q == 1001 or ns.Engine.step().q == 1004, "starts with what is nearest")
+W.log[1001].objs[1] = { text = "Bat wing: 6/6", finished = true }; W.log[1001].complete = true
+W.gt = W.gt + 1; fire("QUEST_LOG_UPDATE")
+local has = {}
+for _, s in ipairs(ns.Engine.route().steps) do has[s.act .. s.q] = true end
+check(has.turnin1001 and not has.complete1001, "objectives done: it becomes a turn-in step")
+local cur = ns.Engine.step()
+SlashCmdList.SLOPLEVELERSWAP("")
+local gone = true
+for _, s in ipairs(ns.Engine.route().steps) do if s.q == cur.q then gone = false end end
+check(gone, "/swap sets that quest aside in quest log mode")
+W.level = 6; fire("PLAYER_LEVEL_UP", 6); W.level = 5
+local back = false
+for _, s in ipairs(ns.Engine.route().steps) do if s.q == cur.q then back = true end end
+check(back, "level-up brings it back")
+lev("ql debug")
+check(W.printed[#W.printed - 1]:find("placed", 1, true) or W.printed[#W.printed]:find("no position", 1, true), "ql debug reports")
 lev("optimize suggest")
 
 -- the solver is exact: compare with trying every order

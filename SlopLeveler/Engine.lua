@@ -249,6 +249,7 @@ function E.swap()
   local r, i = E.route(), E.index()
   local s = r and r.steps[i]
   if not s then return nil end
+  if r.dynamic and ns.QuestLog then return ns.QuestLog.swap(s) end -- quest log mode: by quest
   local db = cdb()
   db.plan = nil
   db.deferred = db.deferred or {}
@@ -276,6 +277,7 @@ end
 -- returns to the earliest one; finished steps in between pass straight away.
 function E.unswap(q)
   local r, db = E.route(), cdb()
+  if r and r.dynamic and ns.QuestLog then return ns.QuestLog.unswap(q) end
   if not (r and db.deferred and next(db.deferred)) then return 0 end
   local first, n = nil, 0
   db.plan = nil
@@ -366,7 +368,7 @@ local VERB = {
 }
 
 function E.describe(s)
-  if not s then return "Route finished." end
+  if not s then return "Route finished. |cff999999/lev questlog|r keeps going on your own quests." end
   Route.Resolve(s)
   local what
   if Route.QUEST_STEP[s.act] then
