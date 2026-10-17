@@ -98,6 +98,7 @@ function UI.refresh()
       out[#out + 1] = { E.describe(s), "GameFontHighlight", wrap = true }
     end
     if s then details(s, mode, out) end
+    for _, row in ipairs(ns.Danger and ns.Danger.rows() or {}) do out[#out + 1] = { row, "GameFontHighlightSmall", wrap = true } end
     local up = E.upcoming(3)
     for k = 2, #up do out[#out + 1] = { E.describe(r.steps[up[k]]), "GameFontDisableSmall" } end
     local plan, pend = ns.cdb.plan, ns.Optimizer and ns.Optimizer.pending

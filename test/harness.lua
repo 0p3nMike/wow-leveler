@@ -785,6 +785,34 @@ check(ns.Flight.measured() and math.abs(ns.Flight.fly() - math.sqrt(2) * 940 / 4
 lev("flight")
 SlopLevelerCharDB.flights = nil
 
+-- danger warnings (RXP's data, here a small stand-in)
+check(ns.DangerData and #ns.DangerData.Alliance > 200, "generated danger data loaded")
+local realData = ns.DangerData
+ns.DangerData = { Alliance = {
+  { n = "Hogger", lo = 11, hi = 11, c = "Elite", mv = "Idle", note = "Charge / Stun", pins = { { 1429, 0.50, 0.50 } } },
+  { n = "Patrol Gnoll", lo = 9, hi = 10, c = "Normal", mv = "Slow Patrol", lines = { { 1429, { 0.40, 0.60, 0.60, 0.60 } } } },
+  { n = "Weak Wolf", lo = 2, hi = 3, c = "Normal", mv = "Idle", pins = { { 1429, 0.52, 0.50 } } },
+} }
+ns.Danger.reset()
+W.level, W.map, W.x, W.y = 10, 1429, 0.53, 0.50          -- 30 yd from Hogger, 10 from the weak wolf
+lev("danger on")
+ns.Danger.update()
+check(ns.Danger.near[1] and ns.Danger.near[1].e.n == "Hogger", "Hogger is the closest threat")
+local names = {}
+for _, h in ipairs(ns.Danger.near) do names[h.e.n] = true end
+check(not names["Weak Wolf"], "a normal mob well under your level is not a threat")
+check(table.concat(W.printed, "\n"):find("danger:|r Hogger (elite 11), 30 yd", 1, true), "chat warns once")
+local before = #W.printed; ns.Danger.update()
+check(#W.printed == before, "...and only once")
+W.x, W.y = 0.50, 0.62                                     -- 20 yd beside the middle of the patrol path
+ns.Danger.update()
+check(ns.Danger.near[1] and ns.Danger.near[1].e.n == "Patrol Gnoll" and math.abs(ns.Danger.near[1].d - 20) < 1e-6, "patrol path: distance to the nearest point on it")
+check(table.concat(ns.Danger.rows(), "\n"):find("Patrol Gnoll", 1, true), "window row")
+lev("danger off"); ns.Danger.update()
+check(#ns.Danger.near == 0, "/lev danger off")
+lev("danger on")
+ns.DangerData = realData; ns.Danger.reset()
+
 -- the solver is exact: compare with trying every order
 math.randomseed(7)
 for trial = 1, 5 do

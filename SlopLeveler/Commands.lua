@@ -21,6 +21,7 @@ local HELP = {
   "/lev arrow on|off          the on-screen arrow (our TomTom)   · /lev pin on|off  the game's map pin + marker",
   "/way x y [text] · /way <uiMapID> x y [text] · /way clear   a manual target; right-click the arrow to drop it",
   "/lev xp reset              start a new XP session",
+  "/lev danger on|off · /lev flight (known flight points, speeds)",
   "/lev map on|off · /lev targetbutton on|off · /lev downtime [reset] · /lev splits reset",
   "Key Bindings > AddOns > sl0p.leveler: keys for the quest-item and target buttons (shift-drag to move them)",
 }
@@ -135,6 +136,7 @@ SlashCmdList.SLOPLEVELER = function(msg)
     if s.opt then C.print("optional step") end
   elseif cmd == "swap" then ns.swapCommand(args)
   elseif cmd == "flight" then ns.Flight.report()
+  elseif cmd == "danger" then ns.Danger.toggle(onoff(args)); C.print("danger warnings: %s", args)
   elseif cmd == "questlog" or cmd == "ql" then
     if args == "debug" then ns.QuestLog.debug()
     elseif args == "accept off" or args == "accept on" then

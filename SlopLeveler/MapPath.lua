@@ -215,7 +215,7 @@ local function miniUpdate()
   local n = 0
   local function put(p, r, g, b, size)
     local x, y, edge = M.miniOffset(p, pc, pwx, pwy, facing, rotate, yards, radius)
-    if not x or n >= MINI_DOTS + #loop then return end
+    if not x or n >= MINI_DOTS + #loop + 6 then return end
     n = n + 1
     local t = dot(n)
     t:SetSize(size, size)
@@ -225,6 +225,9 @@ local function miniUpdate()
     t:Show()
   end
   for _, p in ipairs(loop) do put(p, 1, 0.5, 0.25, 5) end
+  for _, hit in ipairs(ns.Danger and ns.Danger.near or {}) do -- threats near you, red
+    put({ cont = hit.at[1], wx = hit.at[2], wy = hit.at[3] }, 1, 0.1, 0.1, 7)
+  end
   for k = math.min(#steps, MINI_DOTS), 1, -1 do -- next step drawn last, on top
     local c = COLOR[steps[k].act] or COLOR.note
     put(steps[k], c[1], c[2], c[3], k == 1 and 9 or 6)
