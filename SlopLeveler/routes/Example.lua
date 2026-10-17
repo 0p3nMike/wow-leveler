@@ -1,0 +1,22 @@
+-- routes/Example.lua -- the route file format. Registers nothing.
+--
+-- A real route is easiest to get by playing it: /lev rec start, level, then
+-- /lev rec stop and /lev route fromrun <n>. /lev export <name> prints it in
+-- exactly this form, ready to save as routes/<Name>.lua and add to the TOC.
+--
+-- Quest IDs and coordinates must be FACTS from your own client (the recorder
+-- reads them from the game). Never copy another guide's route.
+--
+-- local _, ns = ...
+--
+-- ns.Route.Register({
+--   name = "My route",
+--   steps = {
+--     { act = "accept",   q = 12345, title = "Fallback title", map = 1429, x = 0.4800, y = 0.4200 },
+--     { act = "complete", q = 12345, map = 1429, x = 0.5300, y = 0.3600, text = "kill wolves on the hill" },
+--     { act = "turnin",   q = 12345, map = 1429, x = 0.4800, y = 0.4200 },
+--     { act = "goto",     map = 1429, x = 0.4200, y = 0.6500, r = 20, text = "Goldshire" },
+--     { act = "sethearth", map = 1429, x = 0.4380, y = 0.6580 },
+--     { act = "note",     lvl = 6, text = "Grind" },
+--   },
+-- })
