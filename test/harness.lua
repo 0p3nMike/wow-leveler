@@ -97,6 +97,24 @@ function Mixin(obj, ...) for i = 1, select("#", ...) do for k, v in pairs((selec
 function CreateFromMixins(...) return Mixin({}, ...) end
 MapCanvasDataProviderMixin = { GetMap = function(self) return self.owningMap end }
 W.providers = {}
+W.settings = {}
+Settings = {
+  VarType = { Boolean = "boolean", Number = "number", String = "string" },
+  RegisterVerticalLayoutCategory = function(name) return { name = name, GetID = function() return 77 end } end,
+  RegisterProxySetting = function(_, key, _, label, _, get, set)
+    local s = { key = key, label = label, get = get, set = set }
+    W.settings[key] = s
+    return s
+  end,
+  CreateCheckbox = function() end,
+  CreateDropdown = function(_, setting, options) setting.options = options end,
+  CreateControlTextContainer = function()
+    local d = {}
+    return { Add = function(_, v, l) d[#d + 1] = { value = v, label = l } end, GetData = function() return d end }
+  end,
+  RegisterAddOnCategory = function(c) W.addonCategory = c end,
+  OpenToCategory = function(id) W.openedCategory = id end,
+}
 WorldMapFrame = setmetatable({}, { __index = function() return function() end end })
 WorldMapFrame.canvas = nil
 function WorldMapFrame:AddDataProvider(p) table.insert(W.providers, p) end
@@ -812,6 +830,25 @@ lev("danger off"); ns.Danger.update()
 check(#ns.Danger.near == 0, "/lev danger off")
 lev("danger on")
 ns.DangerData = realData; ns.Danger.reset()
+
+-- options panel: Blizzard's Settings, proxy settings over our own db
+check(W.addonCategory and W.addonCategory.name == "sl0p.leveler", "registered under Options > AddOns")
+local nCheck, nDrop = 0, 0
+for _, s in pairs(W.settings) do if s.options then nDrop = nDrop + 1 else nCheck = nCheck + 1 end end
+check(nCheck == 9 and nDrop == 2, ("9 toggles and 2 dropdowns (%d, %d)"):format(nCheck, nDrop))
+local arrowSet = W.settings.SLOPLEV_ARROW
+arrowSet.set(false)
+check(ns.db.arrow == false and arrowSet.get() == false, "unticking Arrow turns it off")
+arrowSet.set(true)
+check(ns.db.arrow == true, "and back on")
+local opt = W.settings.SLOPLEV_OPTIMIZE
+check(#opt.options() == 3 and opt.options()[2].label == "Suggest", "optimizer dropdown: Auto / Suggest / Off")
+opt.set(3); check(ns.db.optimize == "off" and opt.get() == 3, "dropdown Off sets the optimizer off")
+opt.set(2); check(ns.db.optimize == "suggest", "dropdown Suggest")
+W.settings.SLOPLEV_RELEASE.set(true); check(ns.db.autoRelease == true, "auto-release toggle")
+W.settings.SLOPLEV_RELEASE.set(false)
+lev("options")
+check(W.openedCategory == 77, "/lev options opens the panel")
 
 -- the solver is exact: compare with trying every order
 math.randomseed(7)

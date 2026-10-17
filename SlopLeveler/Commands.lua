@@ -4,7 +4,7 @@ local _, ns = ...
 local C = ns.C
 
 local HELP = {
-  "/lev                       show or hide the window",
+  "/lev                       show or hide the window · /lev options: every toggle in one panel",
   "/lev rec start [name]      start recording a run   · /lev rec stop · /lev rec mark <note>",
   "/lev runs                  list recorded runs",
   "/lev route list            routes you can follow",
@@ -136,6 +136,7 @@ SlashCmdList.SLOPLEVELER = function(msg)
     if s.opt then C.print("optional step") end
   elseif cmd == "swap" then ns.swapCommand(args)
   elseif cmd == "flight" then ns.Flight.report()
+  elseif cmd == "options" or cmd == "config" or cmd == "settings" then ns.Options.open()
   elseif cmd == "danger" then ns.Danger.toggle(onoff(args)); C.print("danger warnings: %s", args)
   elseif cmd == "questlog" or cmd == "ql" then
     if args == "debug" then ns.QuestLog.debug()

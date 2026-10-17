@@ -26,6 +26,7 @@ Flight.lua
 Optimizer.lua
 QuestLog.lua
 UI.lua
+Options.lua
 Commands.lua
 routes\Example.lua
 routes\rxp\routes.xml
