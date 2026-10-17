@@ -22,6 +22,7 @@ local HELP = {
   "/way x y [text] · /way <uiMapID> x y [text] · /way clear   a manual target; right-click the arrow to drop it",
   "/lev xp reset              start a new XP session",
   "/lev danger on|off · /lev flight (known flight points, speeds)",
+  "/lev prof                  profession plan: what to craft/gather, materials, trainers · prof way · prof on|off",
   "/lev map on|off · /lev targetbutton on|off · /lev downtime [reset] · /lev splits reset",
   "Key Bindings > AddOns > sl0p.leveler: keys for the quest-item and target buttons (shift-drag to move them)",
 }
@@ -136,6 +137,14 @@ SlashCmdList.SLOPLEVELER = function(msg)
     if s.opt then C.print("optional step") end
   elseif cmd == "swap" then ns.swapCommand(args)
   elseif cmd == "flight" then ns.Flight.report()
+  elseif cmd == "prof" then
+    if args == "way" then ns.Prof.wayToTrainer()
+    elseif args == "on" or args == "off" then ns.Prof.toggle(onoff(args)); C.print("profession help: %s", args)
+    else
+      local rows = ns.Prof.lines()
+      if #rows == 0 then C.print("no professions (or /lev prof on)") end
+      for _, r in ipairs(rows) do C.print(r) end
+    end
   elseif cmd == "options" or cmd == "config" or cmd == "settings" then ns.Options.open()
   elseif cmd == "danger" then ns.Danger.toggle(onoff(args)); C.print("danger warnings: %s", args)
   elseif cmd == "questlog" or cmd == "ql" then

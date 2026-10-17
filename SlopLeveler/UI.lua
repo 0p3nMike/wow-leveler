@@ -128,6 +128,11 @@ function UI.refresh()
     XP.fmtTime(s and C.epoch() - s.start), XP.fmtNum(s and s.total), XP.fmtNum(s and s.quest)), "GameFontDisableSmall" }
   local split = r and ns.Splits and ns.Splits.line()
   if split then out[#out + 1] = { split, "GameFontHighlightSmall" } end
+  if ns.Prof then
+    local wl = ns.Prof.windowLine()
+    if wl then out[#out + 1] = { wl, "GameFontHighlightSmall", wrap = true } end
+    for _, row in ipairs(ns.Prof.lines()) do out[#out + 1] = { row, "GameFontHighlightSmall", wrap = true } end
+  end
   local dt = ns.Downtime and ns.Downtime.line()
   if dt then out[#out + 1] = { dt, "GameFontHighlightSmall", wrap = true } end
 

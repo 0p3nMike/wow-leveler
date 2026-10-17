@@ -32,6 +32,8 @@ local CHECKS = {
     function() return ns.db.sellGreys ~= false end, function(v) ns.db.sellGreys = v end },
   { "SLOPLEV_RELEASE", "Auto-release on death", "Release and retrieve the corpse automatically. Off by default.",
     function() return ns.db.autoRelease == true end, function(v) ns.db.autoRelease = v end },
+  { "SLOPLEV_PROF", "Profession help", "What to craft or gather next, materials vs your bags, trainer reminders.",
+    function() return ns.db.prof ~= false end, function(v) ns.Prof.toggle(v) end },
   { "SLOPLEV_QLACCEPT", "Quest log mode picks up new quests", "Add quest givers on your map as accept steps.",
     function() return ns.db.qlAccept ~= false end,
     function(v) ns.db.qlAccept = v; if ns.QuestLog.active() then ns.QuestLog.rebuild(true) end end },

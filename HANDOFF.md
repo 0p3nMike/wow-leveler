@@ -87,6 +87,23 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
   is >= 40 yd and >= 8% shorter than the one being followed (no flip-flopping); never while you
   are in the area of the current "do" step. `suggest` = say it, `/lev optimize` applies;
   `clear` reverts and drops to suggest; `off`. Ties keep the route's order.
+- **QuestLog.lua** (`/lev questlog`): a route built from the game itself: quests in the log
+  (`C_QuestLog.GetQuestsOnMap` on your map and the maps above it, `GetNextWaypoint`) as do /
+  turn-in steps, quest givers (`C_QuestLine.GetAvailableQuestLines`, not `isHidden`) as accept
+  steps; rebuilt when the set changes; the optimizer orders the nearest 10. `/lev ql debug` shows
+  how many quests got a position. **Unverified in game: whether Forever fills these in.**
+- **Flight.lua**: known flight points learned at a flight master (`GetTaxiMapID` +
+  `C_TaxiMap.GetAllTaxiNodes`, state 0/1 = known); run and flight speeds MEASURED (flight speed
+  assumed 20 yd/s until your first flight); optimizer and arrow use walk-vs-fly. `/lev flight`.
+- **Danger.lua** + `data/Danger.lua` (RestedXP dangerousMobs, CC BY-NC-SA, `tools/rxp_danger.py`):
+  elites/rares/bosses and normal mobs not 2+ levels under you, within 70 yd of you (chat once,
+  window row, red minimap dots) or 60 yd of the next stop. `/lev danger on|off`.
+- **Options.lua**: Options > AddOns > sl0p.leveler (Blizzard's vertical-layout settings, proxy
+  settings over our db): 2 dropdowns + 10 toggles. `/lev options`.
+- **Professions.lua** + `data/Professions.lua` (ProfessionLevelingGuide, MIT,
+  `tools/plg_professions.lua`, run with luajit): step + materials vs bags, gathering zones per
+  faction, train reminder + `/lev prof way`; in the profession window, the game's own orange /
+  yellow recipes you can make now. Forever's new recipes are not in the 1-300 plan.
 - **Need a full game restart** whenever a new file is added to the TOC (or Bindings.xml); /reload
   is enough for edits.
 - Michael plays an **Undead Mage**: `RXP Undead Mage` (questing) and `RXP Undead Mage AoE`

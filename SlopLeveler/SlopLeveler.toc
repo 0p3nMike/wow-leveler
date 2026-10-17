@@ -21,6 +21,8 @@ Splits.lua
 Downtime.lua
 MapPath.lua
 data\Danger.lua
+data\Professions.lua
+Professions.lua
 Danger.lua
 Flight.lua
 Optimizer.lua

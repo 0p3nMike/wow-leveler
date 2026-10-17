@@ -835,7 +835,7 @@ ns.DangerData = realData; ns.Danger.reset()
 check(W.addonCategory and W.addonCategory.name == "sl0p.leveler", "registered under Options > AddOns")
 local nCheck, nDrop = 0, 0
 for _, s in pairs(W.settings) do if s.options then nDrop = nDrop + 1 else nCheck = nCheck + 1 end end
-check(nCheck == 9 and nDrop == 2, ("9 toggles and 2 dropdowns (%d, %d)"):format(nCheck, nDrop))
+check(nCheck == 10 and nDrop == 2, ("10 toggles and 2 dropdowns (%d, %d)"):format(nCheck, nDrop))
 local arrowSet = W.settings.SLOPLEV_ARROW
 arrowSet.set(false)
 check(ns.db.arrow == false and arrowSet.get() == false, "unticking Arrow turns it off")
@@ -849,6 +849,43 @@ W.settings.SLOPLEV_RELEASE.set(true); check(ns.db.autoRelease == true, "auto-rel
 W.settings.SLOPLEV_RELEASE.set(false)
 lev("options")
 check(W.openedCategory == 77, "/lev options opens the panel")
+
+-- professions: plan step, materials vs bags, trainer, the profession window
+W.profs = { { "Tailoring", 87, 150, 197 }, { "Mining", 40, 75, 186 } }
+function GetProfessions() return 1, 2 end
+function GetProfessionInfo(i)
+  local p = W.profs[i]
+  if p then return p[1], 0, p[2], p[3], 0, 0, p[4] end
+end
+check(ns.ProfData and ns.ProfData.guides.Tailoring and #ns.ProfData.guides.Tailoring > 10, "profession data loaded")
+W.bagItems = { [2592] = 12 }                                 -- 12 Wool Cloth in the bags
+local rows = table.concat(ns.Prof.lines(), "\n")
+check(rows:find("Tailoring|r 87/150  craft ~13 Bolt of Woolen Cloth (to 100)", 1, true), "tailoring: the step and how many crafts")
+check(rows:find("39 Wool Cloth/12", 1, true), "materials for the rest of the step vs bags: 39 needed, 12 have")
+check(rows:find("Mining|r 40/75  gather Copper Ore", 1, true) and rows:find("Elwynn Forest", 1, true), "mining: what and where for your faction")
+W.profs[1] = { "Tailoring", 150, 150, 197 }
+rows = table.concat(ns.Prof.lines(), "\n")
+check(rows:find("train the next rank", 1, true), "capped: train reminder")
+lev("prof way")
+local tw = ns.Way.current()
+check(tw and tw.manual and tw.map == 1453, "/lev prof way: the arrow to the Expert tailoring trainer in Stormwind")
+SlashCmdList.SLOPLEVELERWAY("clear")
+C_TradeSkillUI = {
+  GetFilteredRecipeIDs = function() return { 1, 2, 3, 4 } end,
+  GetRecipeInfo = function(id) return ({
+    { recipeID = 1, name = "Woolen Cape", learned = true, relativeDifficulty = 0 },
+    { recipeID = 2, name = "Green Woolen Vest", learned = true, relativeDifficulty = 1 },
+    { recipeID = 3, name = "Linen Belt", learned = true, relativeDifficulty = 3 },
+    { recipeID = 4, name = "Unlearned", learned = false, relativeDifficulty = 0 },
+  })[id] end,
+  GetCraftableCount = function(id) return ({ 2, 0, 9, 5 })[id] end,
+}
+fire("TRADE_SKILL_SHOW")
+check(#ns.Prof.canSkill == 1 and ns.Prof.canSkill[1].name == "Woolen Cape", "window: only learned, skill-giving, makeable recipes")
+check(table.concat(ns.UI.lines(), "\n"):find("skill-ups you can make now", 1, true), "window line in the step window")
+fire("TRADE_SKILL_CLOSE")
+check(#ns.Prof.canSkill == 0, "cleared when the profession window closes")
+W.profs = {}
 
 -- the solver is exact: compare with trying every order
 math.randomseed(7)
