@@ -15,7 +15,7 @@
 | what | status |
 |---|---|
 | every Blizzard API, event and template used exists in 1.60.1 (70450) | **verified** against Gethe/wow-ui-source branch `forever` (same build) |
-| addon logic: recorder, XP, engine, waypoint, arrow, /way, assist, RXP step types, generated routes load | **verified**: `luajit test\harness.lua SlopLeveler` 132/132 **on pHub** (luajit installed via scoop 2026-10-17, hash checked twice) |
+| addon logic: everything in the TOC (engine, optimizer, quest log, flights, danger, options, professions, ...) | **verified**: `luajit test\harness.lua SlopLeveler` 176/176 **on pHub** (luajit installed via scoop 2026-10-17, hash checked twice) |
 | `tools/routes.py` report and route output | **verified** against `test/fixtures/SlopLeveler.lua` (WoW SavedVariables format) |
 | harness `arg[2]` SavedVariables dump -> `tools/routes.py` | **verified** on pHub |
 | the addon loading in the real game client | **verified by Michael** 2026-10-17 on a beta character (Undead Mage): loads, follows the route, guides to the next quest pickup |
