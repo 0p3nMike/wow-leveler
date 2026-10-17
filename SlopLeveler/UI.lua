@@ -105,7 +105,7 @@ function UI.refresh()
     if plan then
       out[#out + 1] = { ("|cff60ff60optimized order|r |cff999999(~%d yd shorter, %d left · /lev optimize clear)|r"):format(plan.save or 0, #plan.list), "GameFontDisableSmall" }
     elseif pend then
-      out[#out + 1] = { ("|cffffd100a shorter order saves ~%d yd|r |cff999999/lev optimize|r"):format(math.floor(pend.save + 0.5)), "GameFontDisableSmall" }
+      out[#out + 1] = { ("|cffffd100a shorter order saves ~%d yd|r |cff999999/lev optimize · auto: /lev optimize auto|r"):format(math.floor(pend.save + 0.5)), "GameFontDisableSmall" }
     end
     local waiting = #E.deferred()
     if waiting > 0 then
