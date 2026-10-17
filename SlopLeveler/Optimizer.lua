@@ -200,6 +200,14 @@ function O.plan()
     after = w.after, window = w, from = from }
 end
 
+-- Guide order until the route pointer reaches `after` (used by /lev optimize clear).
+function O.hold()
+  local w = O.window()
+  O.held = w and w.after or nil
+  return O.held
+end
+ns.On("SL_ROUTE", function() O.held = nil end) -- a new route starts over at step 1
+
 function O.worthIt(p)
   return p and p.save >= MIN_SAVE and p.save >= p.routeCost * MIN_PCT
 end
@@ -247,6 +255,10 @@ local busy
 function O.replan()
   if busy or O.mode() ~= "auto" then return end
   if ns.Way.mode and ns.Way.mode() == "work" then return end
+  -- /lev optimize clear: the guide's order for the steps that were in view;
+  -- auto resumes by itself once the route has moved past them
+  if O.held and (ns.cdb.step or 1) < O.held then return end
+  O.held = nil
   local p = O.plan()
   if not p then return end
   local gain = O.currentCost(p) - p.bestCost
@@ -273,8 +285,8 @@ function O.suggest()
   if key == lastKey then return end
   lastKey = key
   O.pending = p
-  C.print("a shorter order saves ~%d yd: next would be %s  ·  /lev optimize", p.save,
-    ns.Engine.describe(ns.Engine.route().steps[p.idx[1]]))
+  C.print("a shorter order saves ~%d yd: next would be %s  ·  /lev optimize (once) · /lev optimize auto (always)",
+    p.save, ns.Engine.describe(ns.Engine.route().steps[p.idx[1]]))
   if ns.UI then ns.UI.refresh() end
 end
 

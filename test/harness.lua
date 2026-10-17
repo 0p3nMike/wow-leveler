@@ -725,7 +725,16 @@ ns.Way.mode = realMode
 for _ = 1, 4 do W.gt = W.gt + 0.5; tick(1) end
 check(ns.Engine.index() == 1, "out of it: the east quest you are standing next to: " .. ns.Engine.index())
 lev("optimize clear")
-check(ns.db.optimize == "suggest" and ns.cdb.plan == nil, "clear stops auto so it is not re-applied")
+check(ns.db.optimize == "auto" and ns.cdb.plan == nil, "clear does NOT change the setting (that was the bug)")
+check(ns.Engine.index() == 1, "clear: the guide's order")
+W.x, W.y = 0.005, 0.7                                 -- walk north again: auto would switch...
+for _ = 1, 6 do W.gt = W.gt + 0.5; tick(1) end
+check(ns.Engine.index() == 1, "...but not for the stretch you cleared")
+check(ns.Optimizer.held == 4, "held until the route passes step 4")
+for _, q in ipairs({ 911, 912, 913 }) do W.log[q].objs[1].finished = true; W.log[q].complete = true end
+fire("QUEST_LOG_UPDATE")
+for _ = 1, 4 do W.gt = W.gt + 0.5; tick(1) end
+check(ns.Optimizer.held == nil, "past the stretch: auto is back by itself")
 lev("optimize suggest")
 
 -- quest log mode: no guide, the game's own quest positions + quest givers

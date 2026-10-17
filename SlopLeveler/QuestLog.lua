@@ -124,6 +124,7 @@ function QL.rebuild(force)
   if not force and sig == lastSig then return false end
   lastSig = sig
   route.steps = steps
+  if ns.Optimizer then ns.Optimizer.held = nil end -- step numbers start over: a held stretch no longer exists
   local db = ns.cdb
   db.step, db.sticky, db.deferred, db.plan = 1, {}, {}, nil
   ns.Engine.evaluate()

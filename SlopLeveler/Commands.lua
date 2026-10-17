@@ -164,12 +164,13 @@ SlashCmdList.SLOPLEVELER = function(msg)
       ns.db.optimize = args
       C.print("optimizer: %s", args)
     elseif args == "clear" then
-      -- in auto mode the next re-plan would undo this, so clearing also stops auto
-      if O.mode() == "auto" then ns.db.optimize = "suggest" end
+      -- the guide's order for the steps in view; the setting is NOT changed,
+      -- auto picks up again once the route has moved past them
       ns.cdb.plan, O.pending = nil, nil
+      local upto = O.hold()
       ns.Engine.evaluate()
       ns.Fire("SL_STEP", ns.Engine.index(), ns.Engine.step())
-      C.print("back to the route's order (optimizer now: %s · /lev optimize auto to turn it back on)", O.mode())
+      C.print("guide's order for now%s · optimizer stays %s", upto and (" (until step " .. upto .. ")") or "", O.mode())
     else
       local p = O.pending or O.plan()
       if not p then
