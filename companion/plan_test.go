@@ -80,7 +80,7 @@ func TestPlannerLoadsInLua(t *testing.T) {
 	runner := filepath.Join(dir, "run.lua")
 	script := `local got
 local ns = { Route = { Register = function(def) got = def end } }
-assert(loadfile(arg[1]))("SlopLeveler", ns)
+assert(loadfile(arg[1]))("ZugzugLeveler", ns)
 assert(got and got.name == "My plan" and #got.steps == 3, "not registered")
 assert(got.steps[3].text == 'evil") os.exit() --', "string changed")
 assert(got.steps[2].path[1].r == 20 and got.steps[2].need.below == 9)

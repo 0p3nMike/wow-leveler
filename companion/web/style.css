@@ -1,4 +1,4 @@
-/* sl0p.leveler -- the field ledger.
+/* zugzugleveler -- the field ledger.
    One face (BigBlueTerm437, the house terminal font), kept on its native
    16px pixel grid: 16 for everything, 32 and 48 for the few display numbers.
    Colour roles (set from the chosen theme by app.js; these defaults are the
@@ -8,6 +8,21 @@
      --accent  survey orange, ONLY for "you are here / next stop"
      --sage    done / quest  --s1..--s6 chart series (validated steps)  */
 
+/* the display face: AnglicanText, the blackletter moe.code gives the thrall.
+   Its license allows use but not publishing, so the companion serves it from
+   this PC (fonts.go) and it is never in the repo; without it, the body face. */
+@font-face {
+  font-family: "Anglican";
+  src: local("AnglicanText"), url("/localfont/AnglicanText.ttf") format("truetype");
+  font-display: swap;
+}
+/* the display face anyone gets: UnifrakturMaguntia (j. 'mach' wust, SIL Open
+   Font License 1.1, fonts/UnifrakturMaguntia-OFL.txt), unmodified, from google/fonts */
+@font-face {
+  font-family: "UnifrakturMaguntia";
+  src: url("fonts/UnifrakturMaguntia-Book.ttf") format("truetype");
+  font-display: swap;
+}
 @font-face {
   font-family: "BigBlueTerm";
   src: local("BigBlueTerm437 Nerd Font Mono"), url("fonts/BigBlueTerm437NerdFontMono-Regular.woff2") format("woff2");
@@ -21,6 +36,7 @@
   --critical: #d03b3b;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
   --font: "BigBlueTerm", "Cascadia Mono", Consolas, monospace;
+  --display: "Anglican", "UnifrakturMaguntia", "BigBlueTerm", Georgia, serif;
 }
 
 * { box-sizing: border-box; }
@@ -42,7 +58,7 @@ p.sub { margin: 0 0 16px; max-width: 72ch; }
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 32px;
   padding: 16px 32px 0; border-bottom: 1px solid var(--line);
 }
-.brand { font-size: 16px; white-space: nowrap; }
+.brand { font: 30px/32px var(--display); white-space: nowrap; }
 .brand span { color: var(--graphite); }
 .tabs { display: flex; gap: 24px; flex-wrap: wrap; }
 .tabs button {
@@ -96,7 +112,7 @@ main { padding: 32px; max-width: 1180px; }
 .card { min-width: 0; }
 .card.wide { grid-column: 1 / -1; }
 h2 {
-  font: inherit; margin: 0 0 8px; display: flex; gap: 12px; align-items: baseline;
+  font: 28px/32px var(--display); margin: 0 0 8px; display: flex; gap: 12px; align-items: baseline;
 }
 h2::after { content: ""; flex: 1; border-bottom: 1px dotted var(--graphite); transform: translateY(-4px); }
 h3 { font: inherit; color: var(--graphite); margin: 16px 0 8px; }
@@ -149,41 +165,81 @@ tr.off td { color: var(--graphite); text-decoration: line-through; text-decorati
 tr.zone td { color: var(--graphite); padding-top: 16px; border-bottom: 1px dotted var(--graphite); }
 .meter > div { height: 100%; background: var(--ink); }
 
-/* ---- the Gear plate: a survey drawing of the character, slots on leaders.
-   The game's item quality colours, darkened for the light ground (app.js
-   swaps in the game's own on dark themes). */
+/* ---- the Gear sheet: the game's character sheet, slots down both sides of
+   the 3D character, the hands below. Item quality colours darkened for the
+   light ground (app.js swaps in the game's own on dark themes). */
 :root { --q0: #7d7d7d; --q1: var(--ink); --q2: #1e8a00; --q3: #0062c4; --q4: #8a2be2; --q5: #c45f00; }
-.plate { max-width: 880px; }
-.doll { display: grid; grid-template-columns: minmax(0, 1fr) 200px minmax(0, 1fr); gap: 0 12px; align-items: start; }
-.col { display: grid; grid-auto-rows: 48px; min-width: 0; }
-.slot { min-width: 0; }
-.slotname { color: var(--graphite); display: flex; gap: 12px; }
-.doll .col:first-child .slot { text-align: right; }
-.doll .col:first-child .slotname { flex-direction: row-reverse; justify-content: flex-start; }
-.slotitem { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gearhero { margin-bottom: 40px; }
+.charname { font: 44px/48px var(--display); margin: 0 0 16px; max-width: 1040px; text-align: center; }
+.charsub { display: block; font: 16px/24px var(--font); color: var(--graphite); }
+.sheet { display: grid; grid-template-columns: minmax(0, 1fr) 320px minmax(0, 1fr); grid-template-areas: "left center right" "hands hands hands"; gap: 0 16px; max-width: 1040px; }
+.sheet .left { grid-area: left; } .sheet .center { grid-area: center; } .sheet .right { grid-area: right; }
+.side { display: grid; grid-auto-rows: 52px; min-width: 0; }
+.cell { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.left .cell { flex-direction: row-reverse; text-align: right; }
+.celltext { min-width: 0; line-height: 20px; }
+.cellname { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+.cellname:hover { text-decoration: underline; }
+.cellslot { color: var(--graphite); white-space: nowrap; }
+.cell.none .cellslot { color: var(--graphite); opacity: 0.8; }
+.hands { grid-area: hands; display: flex; justify-content: center; gap: 16px 40px; flex-wrap: wrap; padding-top: 16px; margin-top: 8px; border-top: 1px dotted var(--line); }
+.hands .cell { width: 260px; }
+.slotart { display: block; flex: none; line-height: 0; }
+/* item art: the game's icon in a frame of its quality colour */
+.ico { display: inline-block; vertical-align: -4px; margin-right: 8px; border: 1px solid var(--q1); background: #000; }
+.ico.big { margin: 0; border-width: 2px; border-radius: 3px; width: 44px; height: 44px; }
+/* an empty slot: the game's dark socket art in a dim frame */
+.ico.empty { border-color: #3b3f46; background: #0d0f12; filter: brightness(2.2) contrast(1.1); }
+.ico.q0 { border-color: var(--q0); } .ico.q2 { border-color: var(--q2); } .ico.q3 { border-color: var(--q3); } .ico.q4 { border-color: var(--q4); } .ico.q5 { border-color: var(--q5); }
+.q0, .q0n { color: var(--q0); } .q2, .q2n { color: var(--q2); } .q3, .q3n { color: var(--q3); } .q4, .q4n { color: var(--q4); } .q5, .q5n { color: var(--q5); }
+a.q0, a.q2, a.q3, a.q4, a.q5 { text-decoration-color: currentColor; }
 .up { color: var(--sage); white-space: nowrap; }
 .bistable td:first-child { white-space: nowrap; }
 .bistable td { width: 30%; }
 .bistable td:first-child { width: 10%; }
 .bis .score { color: var(--graphite); margin-left: 8px; }
-.figure { display: block; }
-.figure .body circle, .figure .body path { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-.figure .body path:nth-child(3) { fill: var(--wash); }
-.figure .leaders path { fill: none; stroke: var(--graphite); stroke-width: 1; stroke-dasharray: 2 3; }
-.figure .pin { stroke: var(--paper); stroke-width: 2; fill: var(--q1); }
-.figure .pin.empty { fill: var(--paper); stroke: var(--graphite); stroke-width: 1.5; }
-.weapons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 24px; margin-top: 16px; padding-top: 8px; border-top: 1px dotted var(--line); max-width: 880px; }
-.weapons .slot { height: 48px; }
 .item { white-space: nowrap; }
-.chip { display: inline-block; width: 10px; height: 10px; margin-right: 8px; background: var(--q1); }
-.chip.q0, .figure .pin.q0 { background: var(--q0); fill: var(--q0); }
-.chip.q2, .figure .pin.q2 { background: var(--q2); fill: var(--q2); }
-.chip.q3, .figure .pin.q3 { background: var(--q3); fill: var(--q3); }
-.chip.q4, .figure .pin.q4 { background: var(--q4); fill: var(--q4); }
-.chip.q5, .figure .pin.q5 { background: var(--q5); fill: var(--q5); }
+/* always a black stage: glow effects (the Arcane Orb's) carry a black square
+   that only disappears on black (Wowhead hides it with its logo backdrop) */
+.model3d { width: 320px; height: 408px; background: #000; border: 1px solid var(--ink); position: relative; overflow: hidden; cursor: grab; }
+.model3d:active { cursor: grabbing; }
+.modelnotes { max-width: 1040px; display: flex; flex-wrap: wrap; gap: 0 32px; align-items: baseline; margin-top: 16px; }
+.modelnotes .sub { margin: 0 0 8px; }
+.look summary { cursor: pointer; color: var(--graphite); }
+.lookgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 24px; margin: 8px 0; min-width: min(640px, 100%); }
+.lookgrid label { display: flex; justify-content: space-between; gap: 12px; }
 
-/* the map sheet: a survey grid with coordinates */
+/* ---- the game's item tooltip: its own dark box and line colours, whatever the theme */
+.wowtip { position: fixed; z-index: 50; max-width: 340px; padding: 8px 12px; background: rgba(8, 10, 22, 0.96); color: #fff;
+  border: 1px solid #6b7280; border-radius: 4px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); pointer-events: none; line-height: 20px; }
+.wowtip[hidden] { display: none; }
+.wowtip .tl { display: flex; justify-content: space-between; gap: 24px; }
+.wowtip .tname { margin-bottom: 2px; font: 24px/28px var(--display); }
+.wowtip .tr { white-space: nowrap; }
+.wowtip .tnote { margin-top: 8px; padding-top: 6px; border-top: 1px solid #343a46; color: #8fd19e; }
+.coins .c-g { color: #ffd100; } .coins .c-s { color: #c7c7cf; } .coins .c-c { color: #d08a57; }
+
+/* the map sheet: the game's zone map (from Wowhead's Forever pages), or a survey grid without one */
 .map svg { background: var(--raised); border: 1px solid var(--ink); }
+.map svg .mapart { pointer-events: none; }
+.map svg text.lbl { fill: var(--graphite); } .map svg text.you { fill: var(--ink); }
+/* on the map art: parchment-white labels with a dark halo, as the game writes on its maps */
+.map svg.onart text { fill: #fff6df; stroke: #1b130a; stroke-width: 4px; paint-order: stroke; stroke-linejoin: round; }
+.map svg.onart text.coord { opacity: 0.8; }
+.why { margin: 0 0 40px; max-width: 880px; }
+/* a quest to pick up: the game's yellow "!" */
+.map svg text.bang { fill: #ffd100; stroke: none; font-weight: bold; font-size: 16px; }
+.legend b.bang { color: #b88a00; margin-right: 6px; }
+.qtext { color: var(--graphite); max-width: 60ch; margin-top: 4px; }
+/* phone mode panel */
+.phone { padding: 24px 32px; border-bottom: 1px solid var(--line); max-width: 1180px; }
+.phone[hidden] { display: none; }
+.phonegrid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
+.phonegrid p { max-width: 64ch; }
+.qr { width: 220px; height: 220px; background: #fff; padding: 4px; border: 1px solid var(--ink); }
+.qr svg { width: 100%; height: 100%; display: block; }
+.phone code { overflow-wrap: anywhere; }
+@media (max-width: 640px) { .phone { padding: 16px; } .phonegrid { grid-template-columns: minmax(0, 1fr); } }
 .status-critical { color: var(--critical); }
 
 @media (max-width: 640px) {
@@ -194,13 +250,31 @@ tr.zone td { color: var(--graphite); padding-top: 16px; border-bottom: 1px dotte
   .who { margin-left: 0; }
 }
 @media (max-width: 760px) {
-  .item, .slotitem { white-space: normal; }
+  .item { white-space: normal; }
   .card table { display: block; overflow-x: auto; }
   .facts { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
   .facts dd { overflow-wrap: anywhere; }
-  .doll { grid-template-columns: minmax(0, 1fr); }
-  .figure { display: none; }
-  .doll .col:first-child .slot { text-align: left; }
-  .doll .col:first-child .slotname { flex-direction: row; }
-  .weapons { grid-template-columns: minmax(0, 1fr); }
+  /* the sheet stacks: the character first, then every slot icon-first */
+  .sheet { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center" "left" "right" "hands"; }
+  .sheet .center { justify-self: center; margin-bottom: 16px; max-width: 100%; }
+  .model3d { width: min(320px, calc(100vw - 32px)); }
+  .left .cell { flex-direction: row; text-align: left; }
+  .hands { justify-content: flex-start; border-top: 0; padding-top: 0; margin-top: 0; }
+  .hands .cell { width: auto; }
 }
+.answer p { max-width: 72ch; margin: 8px 0; }
+.roptgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 4px 24px; margin: 8px 0 16px; }
+.ropt { display: block; }
+.mob { margin-top: 16px; max-width: 720px; }
+.mob h3 { color: var(--ink); font-size: 16px; margin: 0 0 4px; }
+/* no pictures (Settings): a quality-coloured square where an icon would be */
+.ico.chipbox { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; background: var(--q1); border: 0; }
+.ico.chipbox.q0 { background: var(--q0); } .ico.chipbox.q2 { background: var(--q2); } .ico.chipbox.q3 { background: var(--q3); } .ico.chipbox.q4 { background: var(--q4); } .ico.chipbox.q5 { background: var(--q5); }
+.ico.big.chipbox { width: 44px; height: 44px; background: var(--raised); border: 2px solid var(--q1); border-radius: 3px; }
+.ico.big.chipbox.q0 { border-color: var(--q0); } .ico.big.chipbox.q2 { border-color: var(--q2); } .ico.big.chipbox.q3 { border-color: var(--q3); } .ico.big.chipbox.q4 { border-color: var(--q4); } .ico.big.chipbox.q5 { border-color: var(--q5); }
+.ico.big.chipbox.empty { border-color: var(--line); background: var(--wash); }
+.model3d.noart { display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; color: #d8d8d8; cursor: default; }
+.settings { padding: 24px 32px; border-bottom: 1px solid var(--line); max-width: 1180px; }
+.settings[hidden] { display: none; }
+.settings label { display: block; margin: 8px 0; max-width: 80ch; }
+.model3d.noart code { background: #2a2f36; color: #fff; padding: 2px 8px; }

@@ -3,3 +3,5 @@ __pycache__/
 sv.lua
 companion/*.exe
 companion/*.exe~
+companion/bundle/
+dist/

@@ -4,6 +4,8 @@
 
 import { h, svg, fmtTime, fmtNum, lineChart, multiLine, columnChart, stackedBars } from "./charts.js";
 import * as G from "./gear.js";
+import * as M from "./model.js";
+import * as I from "./items.js";
 
 const WOWHEAD = "https://www.wowhead.com/forever";
 const ACTS = {
@@ -39,7 +41,7 @@ async function cached(key, path) {
 const entries = v => Array.isArray(v) ? v.map((x, i) => [i + 1, x]) : Object.entries(v || {}).map(([k, x]) => [+k || k, x]);
 const ago = ts => { const s = Date.now() / 1000 - ts; return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
 const qlink = (q, text) => q ? h("a", { href: `${WOWHEAD}/quest=${q}`, target: "_blank", rel: "noopener" }, text || `quest ${q}`) : text || "";
-const ilink = (id, text) => id ? h("a", { href: `${WOWHEAD}/item=${id}`, target: "_blank", rel: "noopener" }, text) : text;
+const ilink = (id, text) => id ? h("a", { href: `${WOWHEAD}/item=${id}`, target: "_blank", rel: "noopener", "data-item": id }, text) : text;
 
 function actBadge(act) {
   const a = ACTS[act] || { ...OTHER, label: ACT_WORDS[act] || act };
@@ -173,8 +175,11 @@ function fieldNotes(db, prof) {
   for (const p of Array.isArray(db.profSnap) ? db.profSnap : []) {
     if (p.max && p.rank >= p.max && p.max < 300) notes.push([`${p.rank}/${p.max}`, ` in ${p.name}: it is capped, so visit a trainer before crafting more.`]);
   }
-  const deferred = entries(db.deferred).length;
+  const aside = entries(db.deferred), missing = aside.filter(([, why]) => why === "missing").length;
+  const left = aside.filter(([, why]) => why === "left").length, deferred = aside.length - missing - left;
+  if (left) notes.push([String(left), ` step${left > 1 ? "s were" : " was"} left behind in a zone you moved on from (you had already hearthed or flown on). /swap back brings them back.`]);
   if (deferred) notes.push([String(deferred), ` step${deferred > 1 ? "s are" : " is"} set aside with /swap. They come back when you level up.`]);
+  if (missing) notes.push([String(missing), ` step${missing > 1 ? "s were" : " was"} passed: the quest is not in your log because its accept was skipped. Pick the quest up and they come back.`]);
   return notes.slice(0, 6);
 }
 
@@ -184,6 +189,21 @@ async function overview(view) {
   const c = S.char;
   if (!c) return view.append(h("div", { class: "empty" }, "No character data yet. Log in with the addon enabled, then /reload."));
   const db = c.db, snap = db.char || {};
+  // a save that suddenly lost most of itself (backup.go): offer the backup
+  try {
+    const bk = await api(`/api/backups?key=${encodeURIComponent(S.charKey)}`);
+    if (bk.wiped) {
+      const when = bk.wiped.name.replace(/^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)\.lua$/, "$1-$2-$3T$4:$5:$6Z");
+      const msg = h("span", {});
+      view.append(h("div", { class: "note bad" },
+        h("b", {}, "This character's save looks reset. "),
+        `The game wrote a nearly empty save over it (it can lose saved data on a restart). The companion kept a copy from ${new Date(when).toLocaleString()}. Close the game, then: `,
+        h("button", { class: "btn", onclick: async () => {
+          try { await api("/api/backups", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ key: S.charKey, name: bk.wiped.name }) }); msg.textContent = " Restored. Start the game again."; }
+          catch (e) { msg.textContent = " " + e.message; }
+        } }, "Restore that copy"), msg));
+    }
+  } catch { }
   const sess = db.session || {};
   const span = (sess.seen || 0) - (sess.start || 0);
   const rate = span > 60 ? (sess.total || 0) / span * 3600 : null;
@@ -209,14 +229,32 @@ async function overview(view) {
       h("p", { class: "sub" }, "Your level and XP appear here after the game saves once with the updated addon (restart the game, then /reload)."));
   }
   if (next) {
-    const b = bearing(worldPoint(snap, maps), worldPoint(next.s, maps));
+    const here = worldPoint(snap, maps), there = worldPoint(next.s, maps);
+    const b = bearing(here, there);
+    const away = here && there && here.cont !== there.cont
+      ? `(in ${(maps[next.s.map] || {}).name || "another zone"}, on the other continent)`
+      : "(distance once this zone is recorded)";
     hero.append(h("div", { class: "nextstop" },
       h("span", { class: "mark" }, "►"), h("span", { class: "muted" }, "Next stop"),
       actBadge(next.s.act), qlink(next.s.q, stepText(next.s)),
-      b ? h("span", { class: "dist" }, `${fmtNum(b.yd)} yd ${b.dir}`) : h("span", { class: "muted" }, "(distance once this zone is recorded)")));
+      b ? h("span", { class: "dist" }, `${fmtNum(b.yd)} yd ${b.dir}`) : h("span", { class: "muted" }, away)));
   } else if (missing) {
     hero.append(h("p", { class: "sub" }, `The route "${missing}" is no longer installed. Pick another in game with /lev route list.`));
   }
+
+  // the coach's explanation (Coach.lua): the same words /lev why says in game
+  const coach = db.coach;
+  if (coach && G.arr(coach.why).length) {
+    const STATE = { questing: "questing", travelling: "on the way", flying: "flying", grinding: "levelling up", questlog: "following your own quests", done: "route finished", none: "no route" };
+    view.append(h("section", { class: "why" }, h("h2", {}, "Why this step"),
+      h("p", { class: "sub" }, `${STATE[coach.state] || coach.state}, when the game last saved (${ago(coach.at)}). In game, /lev why says the same.`),
+      h("ul", { class: "notes" }, G.arr(coach.why).map(l => h("li", {}, l)))));
+  }
+
+  // live, between saves: the game's own chat log (chatlog.go; /lev live on in game)
+  const live = h("section", { class: "why live" });
+  view.append(live);
+  liveFeed(live, snap, db);
 
   const g = h("div", { class: "grid" });
   view.append(g);
@@ -380,7 +418,10 @@ async function mapTab(view) {
   if (!ids.length) return view.append(h("div", { class: "empty" }, "No map data yet: the addon records zone bounds as you travel (needs a game restart after updating the addon), then /reload."));
   const { list } = await upcoming(c.db, 40);
   const cur = list[0] && list[0].s;
-  const guess = (cur && cur.map && maps[cur.map]) ? String(cur.map) : ids[0];
+  const snap = c.db.char || {};
+  // open where you are; the route's next stop when your zone has no bounds yet
+  const guess = snap.map && maps[snap.map] ? String(snap.map)
+    : (cur && cur.map && maps[cur.map]) ? String(cur.map) : ids[0];
   const pick = h("select", {}, ids.map(k => h("option", { value: k }, maps[k].name)));
   pick.value = S.mapPick && maps[S.mapPick] ? S.mapPick : guess;
   const runs = (S.state.runs || []).filter(r => !c.db.char || !r.char || r.char.startsWith(c.db.char.name || ""));
@@ -390,30 +431,45 @@ async function mapTab(view) {
   danger.checked = S.mapDanger !== false;
   const gearBox = h("input", { type: "checkbox" });
   gearBox.checked = S.mapGear !== false;
+  const questBox = h("input", { type: "checkbox" });
+  questBox.checked = S.mapQuests !== false;
   const stops = await gearStops(c);
-  view.append(h("div", { class: "row" }, h("label", {}, "Zone ", pick), h("label", {}, "Your path from run ", runPick), h("label", {}, danger, " danger"), h("label", {}, gearBox, " gear upgrades")));
+  view.append(h("div", { class: "row" }, h("label", {}, "Zone ", pick), h("label", {}, "Your path from run ", runPick), h("label", {}, danger, " danger"), h("label", {}, gearBox, " gear upgrades"), h("label", {}, questBox, " quests to pick up")));
   const box = h("div", { class: "card map" });
   view.append(box);
   const draw = async () => {
-    S.mapPick = pick.value; S.mapRun = runPick.value; S.mapDanger = danger.checked; S.mapGear = gearBox.checked;
+    S.mapPick = pick.value; S.mapRun = runPick.value; S.mapDanger = danger.checked; S.mapGear = gearBox.checked; S.mapQuests = questBox.checked;
     box.replaceChildren();
     const mapID = +pick.value, Wm = 1000, Hm = 667;
     box.append(h("div", { class: "legend" },
       Object.values(ACTS).map(a => h("span", {}, h("i", { style: `background:${a.color}` }), a.label)),
       h("span", {}, h("i", { style: "background:var(--graphite)" }), "Other"),
+      h("span", {}, h("i", { style: "background:var(--ink);outline:2px solid var(--accent)" }), "You"),
       h("span", {}, h("i", { class: "line", style: "background:var(--graphite)" }), "Your path"),
       gearBox.checked ? h("span", {}, h("i", { class: "diamond" }), "Gear upgrade") : null,
+      questBox.checked ? h("span", {}, h("b", { class: "bang" }, "!"), "Quest to pick up") : null,
       danger.checked ? h("span", { class: "status-critical" }, "! danger and patrols") : null));
     const host = h("div", { class: "chart" });
     box.append(host);
+    const mobBox = h("div", { class: "mob" });
     const s = svg("svg", { viewBox: `0 0 ${Wm} ${Hm}`, role: "img", "aria-label": `route on ${maps[mapID].name}` });
     host.append(s);
+    // the game's map art for this zone (Wowhead's Forever map, cached by the
+    // companion): the same 0-1 frame as the addon's map coordinates
+    let art = null;
+    if (I.picturesOn()) { try { art = await cached("mapart:" + maps[mapID].name, `/api/mapart?name=${encodeURIComponent(maps[mapID].name)}`); } catch { } }
+    if (art && art.url) {
+      s.classList.add("onart");
+      svg("image", { class: "mapart", href: art.url, x: 0, y: 0, width: Wm, height: Hm, preserveAspectRatio: "none" }, s);
+    }
     for (let k = 1; k < 10; k++) {
-      svg("line", { class: "gridline", x1: k * Wm / 10, x2: k * Wm / 10, y1: 0, y2: Hm }, s);
-      svg("line", { class: "gridline", x1: 0, x2: Wm, y1: k * Hm / 10, y2: k * Hm / 10 }, s);
+      if (!(art && art.url)) {
+        svg("line", { class: "gridline", x1: k * Wm / 10, x2: k * Wm / 10, y1: 0, y2: Hm }, s);
+        svg("line", { class: "gridline", x1: 0, x2: Wm, y1: k * Hm / 10, y2: k * Hm / 10 }, s);
+      }
       // the same 0-100 coordinates /way and the game's map use
-      svg("text", { x: k * Wm / 10 + 4, y: 18 }, s).textContent = String(k * 10);
-      svg("text", { x: 4, y: k * Hm / 10 - 4 }, s).textContent = String(k * 10);
+      svg("text", { class: art && art.url ? "coord onart" : "coord", x: k * Wm / 10 + 4, y: 18 }, s).textContent = String(k * 10);
+      svg("text", { class: art && art.url ? "coord onart" : "coord", x: 4, y: k * Hm / 10 - 4 }, s).textContent = String(k * 10);
     }
     const tipEl = h("div", { class: "tip" });
     host.append(tipEl);
@@ -455,8 +511,10 @@ async function mapTab(view) {
           svg("circle", { cx, cy, r: 8, fill: "var(--critical)", stroke: "var(--raised)", "stroke-width": 2 }, g);
           svg("rect", { x: cx - 1.5, y: cy - 5, width: 3, height: 6, fill: "#fff" }, g);
           svg("rect", { x: cx - 1.5, y: cy + 2.5, width: 3, height: 2.5, fill: "#fff" }, g);
-          g.addEventListener("mousemove", () => tip(q[0] * Wm, q[1] * Hm, `<b>${e.n}</b> ${e.c !== "Normal" ? e.c.toLowerCase() + " " : ""}${e.lo}${e.hi !== e.lo ? "-" + e.hi : ""}<br>${e.note || ""}${e.mv ? ` (${e.mv.toLowerCase()})` : ""}`));
+          g.addEventListener("mousemove", () => tip(q[0] * Wm, q[1] * Hm, `<b>${e.n}</b> ${e.c !== "Normal" ? e.c.toLowerCase() + " " : ""}${e.lo}${e.hi !== e.lo ? "-" + e.hi : ""}<br>${e.note || ""}${e.mv ? ` (${e.mv.toLowerCase()})` : ""}<br><span class="muted">click for its loot</span>`));
           g.addEventListener("mouseleave", hide);
+          g.style.cursor = "pointer";
+          g.addEventListener("click", () => mobPanel(mobBox, e));
         }
       }
     }
@@ -467,12 +525,22 @@ async function mapTab(view) {
       if (q) pts.push({ i, st, q });
     }
     if (pts.length > 1) svg("path", { d: pts.map((p, k) => `${k ? "L" : "M"}${p.q[0] * Wm},${p.q[1] * Hm}`).join(""), fill: "none", stroke: "var(--accent)", "stroke-width": 2, opacity: 0.6 }, s);
+    // steps at the same spot (accept + turn in at one NPC) share one label: "2,3"
+    const groups = [], groupOf = [];
+    pts.forEach((p, k) => {
+      if (k >= 12) return;
+      const x = p.q[0] * Wm, y = p.q[1] * Hm;
+      let g = groups.find(g => Math.hypot(g.x - x, g.y - y) < 30);
+      if (!g) groups.push(g = { x, y, nums: [] });
+      g.nums.push(k + 1); groupOf[k] = g;
+    });
     pts.slice().reverse().forEach((p, rk) => {
       const k = pts.length - 1 - rk, a = ACTS[p.st.act] || OTHER;
       const g = svg("g", {}, s);
       if (k === 0) svg("circle", { cx: p.q[0] * Wm, cy: p.q[1] * Hm, r: 12, fill: "none", stroke: a.color, "stroke-width": 2 }, g);
       svg("circle", { cx: p.q[0] * Wm, cy: p.q[1] * Hm, r: 6, fill: a.color, stroke: "var(--raised)", "stroke-width": 2 }, g);
-      if (k < 12) { const t = svg("text", { x: p.q[0] * Wm + 10, y: p.q[1] * Hm - 8 }, g); t.textContent = String(k + 1); t.style.fill = "var(--graphite)"; }
+      const nums = k < 12 && groupOf[k].nums;
+      if (nums && nums[0] === k + 1) { const t = svg("text", { class: "lbl", x: p.q[0] * Wm + 10, y: p.q[1] * Hm - 8 }, g); t.textContent = nums.join(","); }
       svg("circle", { cx: p.q[0] * Wm, cy: p.q[1] * Hm, r: 12, fill: "transparent" }, g);
       g.addEventListener("mousemove", () => tip(p.q[0] * Wm, p.q[1] * Hm, `<b>${k + 1}. ${a.label}</b> ${stepText(p.st)}<br>route step ${p.i}${p.st.q ? `, quest ${p.st.q}` : ""}`));
       g.addEventListener("mouseleave", hide);
@@ -493,11 +561,71 @@ async function mapTab(view) {
       g.addEventListener("mousemove", () => tip(cx, cy, `<b>${esc(g0.it.name || "item " + g0.it.id)}</b> +${fmtScore(g0.gain)} for your ${label(g0.slot).toLowerCase()}<br>${esc(g0.how)}`));
       g.addEventListener("mouseleave", hide);
     }
+    // quests you could pick up when the game last saved (the addon works that
+    // out in game from AllTheThings' quest data: QuestInfo.lua), at their givers
+    let pickups = 0;
+    if (questBox.checked && G.arr(c.db.avail).length) {
+      let qdb = {};
+      try { qdb = await cached("questdb", "/api/questdb"); } catch { }
+      const here = G.arr(c.db.avail).filter(q => { const e = qdb[q]; return e && G.arr(e.at)[0] == mapID; });
+      let names = {};
+      if (here.length && I.picturesOn()) { try { names = await cached("qnames:" + mapID + ":" + here.join(","), `/api/quests?ids=${here.slice(0, 100).join(",")}`); } catch { } }
+      for (const q of here) {
+        const at = G.arr(qdb[q].at), cx = at[1] * Wm, cy = at[2] * Hm, e = qdb[q];
+        const g = svg("g", { class: "pickup" }, s);
+        svg("circle", { cx, cy, r: 9, fill: "#1b130a", stroke: "#ffd100", "stroke-width": 2 }, g);
+        const t = svg("text", { class: "bang", x: cx, y: cy + 5, "text-anchor": "middle" }, g); t.textContent = "!";
+        svg("circle", { cx, cy, r: 14, fill: "transparent" }, g);
+        const lvl = Array.isArray(e.lvl) ? e.lvl[0] : e.lvl;
+        const nm = names[q] ? names[q].name : `quest ${q}`, what = questAsk(names[q]) || "";
+        g.addEventListener("mousemove", () => tip(cx, cy, `<b>${esc(nm)}</b>${lvl ? ` level ${lvl}` : ""}<br>${esc(what)}<br><span class="muted">${e.bc ? "a lead-in, " : ""}quest ${q}, not on your route unless it says so</span>`));
+        g.addEventListener("mouseleave", hide);
+        pickups++;
+      }
+    }
+    // you, where the game last saved you
+    const wp = worldPoint(snap, maps);
+    const me = snap.x != null ? (toMap(snap, mapID, maps) || (wp && toMap(wp, mapID, maps))) : null;
+    if (me) {
+      const g = svg("g", {}, s), cx = me[0] * Wm, cy = me[1] * Hm;
+      svg("circle", { cx, cy, r: 9, fill: "var(--ink)", stroke: "var(--accent)", "stroke-width": 3 }, g);
+      const t = svg("text", { class: "lbl you", x: cx + 14, y: cy + 5 }, g); t.textContent = "you";
+      svg("circle", { cx, cy, r: 16, fill: "transparent" }, g);
+      g.addEventListener("mousemove", () => tip(cx, cy, `<b>You</b> when the game last saved`));
+      g.addEventListener("mouseleave", hide);
+    }
+    box.append(mobBox);
     const off = list.length - pts.length;
-    box.append(h("p", { class: "sub" }, `${pts.length} of the next ${list.length} steps are on this map${off ? ` (${off} elsewhere or without a recorded zone)` : ""}${gearBox.checked ? `, and ${shown} of ${stops.length} known gear upgrades` : ""}. Background is a plain grid: Blizzard's map art is theirs.`));
+    const nextZone = cur && maps[cur.map] && String(cur.map) !== pick.value ? ` The next stop is in ${maps[cur.map].name}.` : "";
+    box.append(h("p", { class: "sub" }, `${pts.length} of the next ${list.length} steps are on this map${off ? ` (${off} elsewhere or without a recorded zone)` : ""}${gearBox.checked ? `, and ${shown} of ${stops.length} known gear upgrades` : ""}${questBox.checked ? (G.arr(c.db.avail).length ? `; ${pickups} quests you could pick up here` : "; quests to pick up appear after a /reload with the updated addon") : ""}.${nextZone} ${art && art.url ? "The map is the game's own art, as Wowhead's Forever pages show it." : (I.picturesOn() ? "No map art for this zone on Wowhead yet, so it is drawn on a plain grid." : "A plain grid in the game's own coordinates (map pictures are off: Settings).")}`));
   };
-  for (const e of [pick, runPick, danger, gearBox]) e.addEventListener("change", draw);
+  for (const e of [pick, runPick, danger, gearBox, questBox]) e.addEventListener("change", draw);
   await draw();
+}
+
+// A danger-list mob's card under the map: what it is, the loot AllTheThings
+// knows it drops (no drop rates: ATT has none), and Wowhead for the rates.
+async function mobPanel(box, e) {
+  box.replaceChildren(h("p", { class: "muted" }, `${e.n}...`));
+  let ids = {}, loot = {};
+  try { ids = await api("/api/npcs"); } catch { }
+  try { loot = (await cached("npcloot", "data/npcloot.json")).loot || {}; } catch { }
+  const npc = ids[e.n];
+  const items = npc ? G.arr(loot[npc]) : [];
+  let looks = {};
+  if (items.length && I.picturesOn()) { try { looks = await api(`/api/looks?ids=${items.join(",")}`); } catch { } }
+  const known = S.cache.items && S.cache.items.items || {};
+  const rate = npc ? `${WOWHEAD}/npc=${npc}#drops` : `${WOWHEAD}/search?q=${encodeURIComponent(e.n)}`;
+  box.replaceChildren(
+    h("h3", {}, e.n, h("span", { class: "muted" }, ` ${e.c !== "Normal" ? e.c.toLowerCase() + ", " : ""}level ${e.lo}${e.hi !== e.lo ? "-" + e.hi : ""}`)),
+    e.note ? h("p", { class: "sub" }, e.note + (e.mv ? ` (${e.mv.toLowerCase()})` : "")) : null,
+    items.length ? h("div", {}, h("p", { class: "sub" }, "Drops, as AllTheThings records them (special drops; it has no drop rates):"),
+      h("ul", { class: "notes" }, items.map(id => {
+        const it = known[id] || { id, name: (looks[id] && looks[id].name) || `item ${id}`, q: 1 };
+        return h("li", {}, G.ilink(it));
+      })))
+      : h("p", { class: "sub" }, npc ? "AllTheThings has no drops recorded for it." : "Its loot shows here once you have targeted it in game (the addon learns its NPC number), then /reload."),
+    h("p", {}, h("a", { href: rate, target: "_blank", rel: "noopener" }, npc ? "Full loot table with drop rates on Wowhead" : `Look ${e.n} up on Wowhead`)));
 }
 
 // ------------------------------------------------------------------ planner
@@ -570,10 +698,48 @@ function stepsFromRun(run) {
   return out;
 }
 
+// The kind of a step, as the addon's Route.category decides it (the words come
+// from the addon's own Route.CATEGORIES, through /api/prefs).
+function stepKind(s, cats) {
+  if (s.opt && !String(s.act).includes("accept")) return "optional";
+  if (!["train", "goto", "note"].includes(s.act)) return null;
+  const t = " " + `${s.text || ""} ${s.hint || ""}`.toLowerCase() + " ";
+  for (const [k, c] of Object.entries(cats)) for (const w of G.arr(c.words)) if (t.includes(w)) return k;
+  return null;
+}
+
+// "What your route includes": kinds of step to leave out (prefs.go -> the addon's Prefs.lua).
+async function routeOptions(c) {
+  const box = h("section", { class: "why ropts" }, h("h2", {}, "What your route includes"));
+  let p;
+  try { p = await api("/api/prefs"); } catch (e) { box.append(h("p", { class: "note bad" }, e.message)); return box; }
+  let steps = [];
+  if (c && c.db.route) { try { steps = (await cached("route:" + c.db.route, `/api/route?name=${encodeURIComponent(c.db.route)}`)).steps; } catch { } }
+  const from = (c && c.db.step) || 1, count = {};
+  steps.forEach((s, i) => { if (i + 1 >= from) { const k = stepKind(s, p.categories); if (k) count[k] = (count[k] || 0) + 1; } });
+  const off = new Set(G.arr(p.skip));
+  const msg = h("span", { class: "muted" });
+  const ORDER = ["cooking", "firstaid", "professions", "weapons", "food", "classtrain", "pettrain", "optional"];
+  const keys = [...ORDER.filter(k => p.categories[k]), ...Object.keys(p.categories).filter(k => !ORDER.includes(k))];
+  const boxes = keys.map(k => {
+    const cb = h("input", { type: "checkbox" }); cb.checked = !off.has(k);
+    cb.addEventListener("change", () => { if (cb.checked) off.delete(k); else off.add(k); });
+    return h("label", { class: "ropt" }, cb, ` ${p.categories[k].label}`, h("span", { class: "muted" }, c && c.db.route ? `  ${count[k] || 0} step${count[k] === 1 ? "" : "s"} ahead` : ""));
+  });
+  box.append(h("p", { class: "sub" }, "Untick what you do not need, and the addon (and its shortest-order planner) passes those steps over. A mage conjures food and water, so cooking can go. Quests are never left out this way."),
+    h("div", { class: "roptgrid" }, boxes),
+    h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: async () => {
+      try { await api("/api/prefs", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ skip: [...off] }) }); msg.textContent = " Saved. In game: /reload."; }
+      catch (e) { msg.textContent = " " + e.message; }
+    } }, "Save for the addon"), msg));
+  return box;
+}
+
 async function plannerTab(view) {
   const c = S.char;
   const maps = await cached("maps", "/api/maps");
   const routes = await cached("routes", "/api/routes");
+  view.append(await routeOptions(c));
   view.append(h("h2", {}, "Planner"), h("p", { class: "sub" }, "Pick steps, reorder them (by hand or shortest order), and send them to the addon as the route \"Planner\". In game: /reload, then /lev route use Planner."));
   const routePick = h("select", {}, routes.map(r => h("option", { value: r.name }, `${r.name} (${r.steps})`)));
   const from = h("input", { type: "number", min: 1, value: 1, style: "width:80px" });
@@ -631,7 +797,7 @@ async function plannerTab(view) {
   const exportPlan = async () => {
     const steps = rows.filter(r => r.on).map(r => { const s = { ...r.s }; delete s._d; return s; });
     try {
-      const res = await api("/api/plan", { method: "POST", headers: { "Content-Type": "application/json", "X-Sl0p-Leveler": "1" }, body: JSON.stringify({ name: nameIn.value, steps }) });
+      const res = await api("/api/plan", { method: "POST", headers: { "Content-Type": "application/json", "X-Zugzug": "1" }, body: JSON.stringify({ name: nameIn.value, steps }) });
       msg.replaceChildren(h("div", { class: "note" }, `Saved ${res.steps} steps as "${nameIn.value}". In game: /reload, then /lev route use ${nameIn.value}. (First time only: restart the game so it sees the new file.)`));
     } catch (e) {
       msg.replaceChildren(h("div", { class: "note bad" }, "Could not save: " + e.message));
@@ -729,8 +895,17 @@ async function gearTab(view) {
   const lvlIn = h("input", { type: "number", min: 1, max: 60, style: "width:64px" });
   const specPick = h("select", {});
   const kindPick = h("select", {});
+  // the hero: the character sheet, your character in 3D in the middle
+  for (const it of Object.values(known.items || {})) I.remember(it);
+  for (const it of [...Object.values(gear.slots || {}), ...G.arr(gear.bags)]) I.remember(it);
+  const stage = h("div", { class: "model3d", role: "img", "aria-label": "Your character in 3D, wearing your gear" });
+  const mstat = h("p", { class: "sub" });
+  const lookBox = h("details", { class: "look" });
+  const sheetSlot = h("div");
   const box = h("div");
-  view.append(box);
+  const title = h("div", { class: "charname" }, snap.name || c.name,
+    h("span", { class: "charsub" }, `level ${snap.level ?? "?"} ${raceName(snap.race)} ${(snap.class || "").toLowerCase()}`));
+  view.append(h("section", { class: "hero gearhero" }, title, sheetSlot, h("div", { class: "modelnotes" }, mstat, lookBox)), box);
 
   const draw = () => {
     box.replaceChildren();
@@ -776,8 +951,8 @@ async function gearTab(view) {
       next[sl] = scored.filter(e => e.ok !== false && (G.LOC_SLOTS(e.it.loc) || []).includes(sl) && (e.it.req || 1) > lvl && (e.it.req || 1) <= lvl + 5 && sc(e) > bestScore + 0.05).sort((a, b) => sc(b) - sc(a))[0];
     }
 
-    // the plate: what you wear, drawn
-    box.append(h("section", { class: "hero" }, G.plate(worn, ups)));
+    // the sheet: what you wear, around the model (the stage moves, it is not redrawn)
+    sheetSlot.replaceChildren(G.sheet(worn, ups, stage));
 
     const g = h("div", { class: "grid" });
     box.append(g);
@@ -789,7 +964,9 @@ async function gearTab(view) {
     g.append(ch);
     ch.append(facts([
       ["Character", `${snap.name || c.name}, level ${snap.level ?? "?"} ${raceName(snap.race)} ${(snap.class || "").toLowerCase()}`],
-      ["Talents", trees.length ? trees.map(t => `${t.name} ${t.points || 0}`).join(", ") + (top && top.points ? "" : " (no points yet)") : "not saved"],
+      ["Talents", !trees.length ? "not saved"
+        : !trees.some(t => t.name) ? "no spec chosen yet"
+        : trees.filter(t => t.name).map(t => `${t.name} ${t.points || 0}`).join(", ") + (top && top.points ? "" : " (no points yet)")],
       ["Item level", gear.ilvl ? gear.ilvl.toFixed(1) : "--"],
       ["Stats", ["str", "agi", "sta", "int", "spi"].map(k => `${s[k] ?? "--"} ${k}`).join(", ")],
       ["Spell damage", s.spell ? `+${s.spell}` : "none"],
@@ -872,7 +1049,65 @@ async function gearTab(view) {
   specPick.addEventListener("change", () => { st.spec = specPick.value; save(); draw(); });
   kindPick.addEventListener("change", () => { st.kind = kindPick.value; save(); draw(); });
   draw();
+  modelPanel(snap, gear.slots || {}, stage, mstat, lookBox); // after draw: the stage is on the page
 }
+// The 3D character (model.js). Face, hair and skin are not something the game
+// tells addons. LOOK_PICKER off (Michael's call, 2026-10-18): the model is the
+// race's default look in the body the save names, and the face/hair/body
+// pickers stay hidden; on, they are picked once and remembered in this browser.
+const LOOK_PICKER = false;
+async function modelPanel(snap, worn, stage, mstat, lookBox) {
+  if (!I.picturesOn()) { // no Wowhead pictures (Settings): the 3D character is in the game
+    stage.classList.add("noart"); lookBox.hidden = true;
+    stage.replaceChildren(h("div", {}, h("p", {}, "Your character in 3D is in the game:"), h("p", {}, h("code", {}, "/lev model")), h("p", { class: "muted" }, "(or turn on pictures in Settings)")));
+    mstat.textContent = "";
+    return;
+  }
+  const race = M.raceId(snap);
+  if (!race) { mstat.textContent = "No 3D model: this save does not say your race. /reload with the updated addon."; return; }
+  const key = "look:" + S.charKey;
+  const look = LOOK_PICKER ? JSON.parse(store.get(key) || "{}") : {};
+  if (look.body == null && snap.sex) look.body = snap.sex === 3 ? 1 : 0;
+  lookBox.hidden = !LOOK_PICKER;
+  let opts = [], items = [], missing = [];
+  const paint = async () => {
+    mstat.textContent = "Loading your character from Wowhead's model files (the first time takes a few seconds)...";
+    try {
+      await M.show(stage, { race, body: look.body || 0, items, options: LOOK_PICKER ? M.charOptions(opts, look) : [] });
+      mstat.textContent = (missing.length ? `Not drawn, because Wowhead's Forever database does not have it yet: ${missing.join(", ")}. ` : "")
+        + (LOOK_PICKER ? "Drag to turn it. The game does not tell addons your face or hair, so set them below."
+          : "Drag to turn it. Face and hair are your race's default look: the game does not tell addons yours.");
+    } catch (e) {
+      mstat.textContent = `The 3D model could not load (${e.message}). The rest of the page works without it.`;
+    }
+  };
+  const pickers = () => {
+    const save = () => { store.set(key, JSON.stringify(look)); paint(); };
+    const sel = (name, n, val, set, names) => {
+      const s = h("select", {}, Array.from({ length: n }, (_, i) => h("option", { value: i }, (names && names[i]) || String(i + 1))));
+      s.value = String(val || 0);
+      s.addEventListener("change", () => { set(+s.value); save(); });
+      return h("label", {}, name + " ", s);
+    };
+    const reload = async b => { look.body = b; opts = await M.customization(race * 2 - 1 + b).catch(() => []); pickers(); save(); };
+    lookBox.replaceChildren(h("summary", {}, "Face, hair and body"),
+      h("div", { class: "lookgrid" },
+        sel("Body", 2, look.body, reload, ["1", "2"]),
+        opts.filter(o => o.Choices && o.Choices.length > 1).map(o => sel(o.Name || `option ${o.Id}`, o.Choices.length, look[o.Id], v => { look[o.Id] = v; }))),
+      h("button", { type: "button", class: "btn", onclick: () => { for (const k of Object.keys(look)) if (k !== "body") delete look[k]; pickers(); save(); } }, "Back to the default look"));
+  };
+  try {
+    const ids = M.DRAWN.map(sl => worn[sl] && worn[sl].id).filter(Boolean);
+    const [looks, o] = await Promise.all([ids.length ? api(`/api/looks?ids=${ids.join(",")}`) : {}, LOOK_PICKER ? M.customization(race * 2 - 1 + (look.body || 0)).catch(() => []) : []]);
+    opts = o;
+    ({ items, missing } = M.viewerItems(worn, looks));
+  } catch (e) {
+    mstat.textContent = `Could not look up your items on Wowhead (${e.message}).`;
+  }
+  if (LOOK_PICKER) pickers();
+  await paint();
+}
+
 const label = G.label;
 // UnitRace's file name ("Scourge") as players say it
 const raceName = r => ({ Scourge: "Undead", NightElf: "Night elf", BloodElf: "Blood elf" })[r] || r || "";
@@ -985,12 +1220,18 @@ async function questsTab(view) {
   };
   const cw = await charWeights(c);
   const worn = (c.db.gear && c.db.gear.slots) || {};
+  // what each quest asks, in the quest's own words (Wowhead's Forever tooltips, cached by the companion)
+  let tips = {};
+  if (I.picturesOn()) { try { tips = await api(`/api/quests?ids=${log.map(e => e.q).join(",")}`); } catch { } }
+  // the game's own words first (the addon saves them), else Wowhead's
+  const asks = q => { const e = log.find(x => x.q === q); return (e && e.ask) || questAsk(tips[q]); };
   const row = e => {
     const objs = G.arr(e.objs);
     const t = turnin.get(e.q);
     const opts = choices(e.q);
     return h("tr", { class: e.done ? "sel" : "" },
-      h("td", {}, qlink(e.q, e.title || `quest ${e.q}`), h("div", { class: "muted" }, `level ${e.level ?? "?"}${e.level && e.level <= lvl - 5 ? ", low for you" : ""}`)),
+      h("td", {}, qlink(e.q, e.title || `quest ${e.q}`), h("div", { class: "muted" }, `level ${e.level ?? "?"}${e.level && e.level <= lvl - 5 ? ", low for you" : ""}`),
+        asks(e.q) ? h("div", { class: "qtext" }, asks(e.q)) : null),
       h("td", {}, e.done ? h("span", { class: "up" }, "ready to turn in") : objs.length ? objs.map(o => h("div", { class: "obj" },
         h("span", { class: o.done ? "muted" : "" }, o.text || ""),
         o.need > 1 ? h("div", { class: "meter" }, h("div", { style: `width:${Math.min(100, (o.have || 0) / o.need * 100)}%` })) : null)) : h("span", { class: "muted" }, "--")),
@@ -1002,6 +1243,9 @@ async function questsTab(view) {
   };
   const zones = new Map();
   for (const e of log) { const z = e.zone || "Other"; if (!zones.has(z)) zones.set(z, []); zones.get(z).push(e); }
+  // Ask (ask.go): a question about your quests, answered by a local AI model from your own data
+  view.append(askPanel());
+
   const grid = h("div", { class: "grid" });
   view.append(grid);
   const card = h("section", { class: "card wide" }, h("h2", {}, "Quest log"),
@@ -1017,6 +1261,87 @@ async function questsTab(view) {
   }
 }
 
+function askPanel() {
+  const box = h("section", { class: "why ask" });
+  const draw = async () => {
+    let st;
+    try { st = await api("/api/ask"); } catch (e) { box.replaceChildren(); return; }
+    const head = h("h2", {}, "Stuck? Ask");
+    if (!st.ready) {
+      const models = G.arr(st.models);
+      if (!models.length) {
+        box.replaceChildren(head, h("p", { class: "sub" }, "Questions about your quests are answered by an AI model running on this PC, from your own quest log, route and the quests' text. None was found: install Ollama (ollama.com) and a small model, then reload this page. Until then, /lev why in game explains the current step."));
+        return;
+      }
+      const pick = h("select", {}, models.map(m => h("option", { value: m }, m)));
+      const small = models.find(m => /(^|[^\d])(7|8)b/i.test(m)); if (small) pick.value = small;
+      const msg = h("span", { class: "muted" });
+      box.replaceChildren(head,
+        h("p", { class: "sub" }, "Answered by a model on this PC from your quest log, your route and each quest's own text. Nothing leaves this PC. It shares the graphics card with the game, so a small model (7-8B) is best while you play."),
+        h("div", { class: "row" }, h("label", {}, "Model ", pick), h("button", { class: "btn", type: "button", onclick: async () => {
+          try { await api("/api/ask", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ url: st.ollama, model: pick.value }) }); draw(); }
+          catch (e) { msg.textContent = e.message; }
+        } }, "Use it"), msg));
+      return;
+    }
+    const q = h("input", { type: "text", placeholder: "e.g. where do I find Grizzled Bear Hearts?", style: "width:min(560px,100%)" });
+    const out = h("div", { class: "answer" });
+    const go = async () => {
+      if (!q.value.trim()) return;
+      out.replaceChildren(h("p", { class: "muted" }, `Thinking (${st.model})...`));
+      try { const a = await api(`/api/ask?key=${encodeURIComponent(S.charKey)}&q=${encodeURIComponent(q.value)}`); out.replaceChildren(...String(a.answer).split("\n").filter(Boolean).map(l => h("p", {}, l))); }
+      catch (e) { out.replaceChildren(h("p", { class: "note bad" }, e.message)); }
+    };
+    q.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+    box.replaceChildren(head,
+      h("p", { class: "sub" }, `Answered by ${st.model} on this PC, from what the game last saved. It can be wrong: check what it says against the quest text below.`),
+      h("div", { class: "row" }, q, h("button", { class: "btn primary", type: "button", onclick: go }, "Ask")), out);
+  };
+  draw();
+  return box;
+}
+
+// A quest's ask, from its Wowhead tooltip text: the first real sentence, not
+// the "Level 15" / "Requires level 11" / "Requirements:" lines around it.
+function questAsk(tip) {
+  const lines = (tip && tip.text ? tip.text.split("\n") : []).map(l => l.trim());
+  return lines.find(l => l.length > 12 && !/^(level \d+|requires? |requirements:?|- |side quest|repeatable|provided item)/i.test(l)) || null;
+}
+
+// ------------------------------------------------------------------ live
+
+// The Overview's live panel: what the game's chat log says happened since the
+// last save, refreshed every 3 s while the Overview is open.
+let liveTimer = null;
+function liveFeed(box, snap, db) {
+  clearTimeout(liveTimer);
+  const since = (snap.at || db.syncAt || 0) - 2;
+  const LABEL = { accept: "accepted", complete: "completed", level: "level up", xp: "XP", explore: "discovered", loot: "loot", money: "money" };
+  const tick = async () => {
+    if (!box.isConnected) return;
+    let L;
+    try { L = await api(`/api/live?since=${since}`); } catch { L = null; }
+    const shown = L ? G.arr(L.events).filter(e => e.kind !== "other" && e.kind !== "check") : [];
+    const checks = L ? G.arr(L.events).filter(e => e.kind === "check") : [];
+    const head = h("h2", {}, "Since the last save");
+    if (!L || !L.file) {
+      box.replaceChildren(head, h("p", { class: "sub" }, "Live updates are off. In game, /lev live on turns them on (the game then writes its chat to Logs\\WoWChatLog.txt on this PC), or press Sync on the addon's window to save now."));
+    } else {
+      const lv = shown.filter(e => e.kind === "level").pop();
+      const xpNow = (snap.xp || 0) + (L.xp || 0);
+      const sum = lv ? `level ${lv.level} reached, ${fmtNum(L.xp || 0)} XP since the save`
+        : snap.xpMax ? `${fmtNum(L.xp || 0)} XP since the save: about ${fmtNum(Math.max(0, snap.xpMax - xpNow))} to level ${(snap.level || 0) + 1}` : `${fmtNum(L.xp || 0)} XP since the save`;
+      const quests = shown.filter(e => e.kind === "accept" || e.kind === "complete");
+      box.replaceChildren(head,
+        h("p", { class: "sub" }, `${sum}. ${quests.length ? `${quests.length} quest event${quests.length > 1 ? "s" : ""}. ` : ""}From the game's chat log, last written ${ago(L.written)}.`
+          + (checks.length ? ` Your /lev live check reached it.` : "")),
+        shown.length ? h("ul", { class: "notes" }, shown.slice(-8).reverse().map(e => h("li", {}, h("span", { class: "fig" }, LABEL[e.kind] || e.kind), " ", e.text))) : null);
+    }
+    liveTimer = setTimeout(tick, 3000);
+  };
+  tick();
+}
+
 // ------------------------------------------------------------------ shell
 
 const TABS = { overview, gear: gearTab, quests: questsTab, runs: runsTab, map: mapTab, planner: plannerTab, prof: profTab };
@@ -1030,6 +1355,7 @@ async function loadChar() {
 
 async function render() {
   const view = document.getElementById("view");
+  M.stop(); // the 3D viewer, if the Gear tab had one
   view.replaceChildren();
   try { await TABS[S.tab](view); } catch (e) { view.append(h("div", { class: "note bad" }, "Something went wrong: " + e.message)); console.error(e); }
 }
@@ -1110,7 +1436,7 @@ async function themes() {
   const group = (label, list) => list.length ? h("optgroup", { label }, list.map(t => h("option", { value: t.id }, t.name))) : null;
   const follow = data.panefx && byId[data.panefx] ? h("option", { value: "panefx" }, `Follow panefx (${byId[data.panefx].name})`) : null;
   pick.replaceChildren(...[
-    group("sl0p.leveler", data.themes.filter(t => t.source === "sl0p.leveler")),
+    group("zugzugleveler", data.themes.filter(t => t.source === "zugzugleveler")),
     follow,
     group("Your panefx themes", data.themes.filter(t => t.source === "yours")),
     group("panefx", data.themes.filter(t => t.source === "panefx")),
@@ -1133,8 +1459,76 @@ async function themes() {
   });
 }
 
+// Phone mode (lan.go): the page on a phone on the same Wi-Fi, paired by QR code.
+async function phonePanel() {
+  const box = document.getElementById("phone"), btn = document.getElementById("phoneBtn");
+  if (location.hostname !== "127.0.0.1" && location.hostname !== "localhost") { btn.hidden = true; return; } // on the phone itself
+  const draw = async () => {
+    let st;
+    try { st = await api("/api/lan"); } catch (e) { box.replaceChildren(h("p", { class: "note bad" }, e.message)); return; }
+    const toggle = async on => {
+      try { await api("/api/lan", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ on }) }); }
+      catch (e) { box.append(h("p", { class: "note bad" }, `Could not ${on ? "switch it on" : "switch it off"}: ${e.message}`)); return; }
+      draw();
+    };
+    const parts = [h("h2", {}, "On your phone")];
+    if (!st.on) {
+      parts.push(h("p", { class: "sub" }, "No second screen? Open this page on a phone on the same Wi-Fi. Switching this on lets this PC answer on your home network, only to a phone you pair here. Windows may ask once whether to allow it through the firewall: allow it on private networks."),
+        h("button", { class: "btn primary", type: "button", onclick: () => toggle(true) }, "Switch on"));
+    } else {
+      const qr = h("div", { class: "qr", role: "img", "aria-label": "QR code with the pairing link" });
+      parts.push(h("div", { class: "phonegrid" }, qr, h("div", {},
+        h("p", {}, "Scan this with the phone's camera. It opens the page there and pairs that phone, which can then look but not change anything."),
+        h("p", { class: "sub" }, "Or type the link: ", h("code", {}, st.url)),
+        h("p", { class: "sub" }, "Afterwards the phone uses ", h("code", {}, st.address), ". Keep the pairing link private: anyone on your Wi-Fi with it can read this page."),
+        h("button", { class: "btn", type: "button", onclick: () => toggle(false) }, "Switch off"))));
+      try {
+        if (!window.qrcode) await new Promise((ok, bad) => { const s = document.createElement("script"); s.src = "vendor/qrcode-generator-1.4.4.js"; s.onload = ok; s.onerror = bad; document.head.append(s); });
+        const code = window.qrcode(0, "M"); code.addData(st.url); code.make();
+        qr.innerHTML = code.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+      } catch { qr.textContent = "(the QR code could not be drawn: use the link)"; }
+    }
+    box.replaceChildren(...parts);
+  };
+  btn.addEventListener("click", () => {
+    box.hidden = !box.hidden;
+    btn.setAttribute("aria-expanded", String(!box.hidden));
+    if (!box.hidden) draw();
+  });
+}
+phonePanel();
+
+// Settings: pictures from Wowhead (settings.go), the player's own choice.
+function settingsPanel() {
+  const box = document.getElementById("settings"), btn = document.getElementById("settingsBtn");
+  if (location.hostname !== "127.0.0.1" && location.hostname !== "localhost") { btn.hidden = true; return; }
+  const draw = async () => {
+    let st;
+    try { st = await api("/api/settings"); } catch (e) { box.replaceChildren(h("p", { class: "note bad" }, e.message)); return; }
+    const cb = h("input", { type: "checkbox" }); cb.checked = !!st.wowhead;
+    const msg = h("span", { class: "muted" });
+    cb.addEventListener("change", async () => {
+      try {
+        await api("/api/settings", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ wowhead: cb.checked }) });
+        I.setPictures(cb.checked); S.cache = {}; msg.textContent = " Saved."; render();
+      } catch (e) { msg.textContent = " " + e.message; }
+    });
+    box.replaceChildren(h("h2", {}, "Settings"),
+      h("label", {}, cb, " Pictures from Wowhead: the 3D character, item icons, zone maps and quest text when the game has not given it.", msg),
+      h("p", { class: "sub" }, "Off by default. Wowhead's terms of use do not allow downloads by programs other than a web browser, which is how the companion would get them, so this is your call for your own PC. With it off the page uses only what your game reports, and the 3D character is in the game: /lev model."));
+  };
+  btn.addEventListener("click", () => {
+    box.hidden = !box.hidden;
+    btn.setAttribute("aria-expanded", String(!box.hidden));
+    if (!box.hidden) draw();
+  });
+}
+settingsPanel();
+
+I.attachTips(); // the game's item tooltips, anywhere an item is shown
+I.watchIcons(document.getElementById("view"));
 for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => go(b.dataset.tab));
 document.getElementById("charPick").addEventListener("change", async e => { S.charKey = e.target.value; S.cache = {}; await loadChar(); render(); });
 S.tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : "overview";
-themes().then(() => refresh(true)).then(() => go(S.tab)).catch(e => { document.getElementById("view").append(h("div", { class: "note bad" }, "Cannot read the addon's data: " + e.message)); });
+api("/api/settings").then(st => I.setPictures(st.wowhead)).catch(() => { }).then(themes).then(() => refresh(true)).then(() => go(S.tab)).catch(e => { document.getElementById("view").append(h("div", { class: "note bad" }, "Cannot read the addon's data: " + e.message)); });
 poll();

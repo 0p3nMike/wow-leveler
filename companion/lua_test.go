@@ -9,7 +9,7 @@ import (
 
 func TestSavedVariablesShape(t *testing.T) {
 	src := `
-SlopLevelerDB = {
+ZugzugLevelerDB = {
 	["runs"] = {
 		{
 			["name"] = "fixture \"run\"",
@@ -28,7 +28,7 @@ Other = nil
 	if err != nil {
 		t.Fatal(err)
 	}
-	db := sv["SlopLevelerDB"].(map[string]any)
+	db := sv["ZugzugLevelerDB"].(map[string]any)
 	run := db["runs"].([]any)[0].(map[string]any)
 	if run["name"] != `fixture "run"` || run["note"] != "a -- not a comment" {
 		t.Fatalf("strings: %#v", run)
@@ -66,7 +66,7 @@ ns.ProfData = { guides = { ["Tailoring"] = {
 
 // The real files in this repo parse, and turn into JSON.
 func TestRepoFilesParse(t *testing.T) {
-	root := filepath.Join("..", "SlopLeveler")
+	root := filepath.Join("..", "ZugzugLeveler")
 	for _, c := range []struct{ file, marker string }{
 		{"data/Professions.lua", "ns.ProfData ="},
 		{"data/Danger.lua", "ns.DangerData ="},
@@ -84,7 +84,7 @@ func TestRepoFilesParse(t *testing.T) {
 			t.Fatalf("%s: json: %v", c.file, err)
 		}
 	}
-	src, err := os.ReadFile(filepath.Join("..", "test", "fixtures", "SlopLeveler.lua"))
+	src, err := os.ReadFile(filepath.Join("..", "test", "fixtures", "ZugzugLeveler.lua"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestRepoFilesParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runs := sv["SlopLevelerDB"].(map[string]any)["runs"].([]any)
+	runs := sv["ZugzugLevelerDB"].(map[string]any)["runs"].([]any)
 	if len(runs) != 1 {
 		t.Fatalf("fixture runs: %d", len(runs))
 	}

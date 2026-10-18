@@ -1,5 +1,5 @@
-// gear.js -- the Gear tab: what you wear (a survey plate of the character),
-// what is better, and what to pick from quest rewards.
+// gear.js -- the Gear tab: what you wear (the character sheet around the 3D
+// model), what is better, and what to pick from quest rewards.
 //
 // Everything is the game's own data: Export.lua saves your equipment, bags,
 // spec and skills, plus every quest reward and merchant item the game has shown
@@ -8,7 +8,8 @@
 // and the rules of RestedXP's ItemUpgrades.lua: spell damage read per school
 // from the tooltip, weapons by DPS and speed, zero weights ignored.
 
-import { h, svg, fmtNum } from "./charts.js";
+import { h } from "./charts.js";
+import * as I from "./items.js";
 
 const WOWHEAD = "https://www.wowhead.com/forever";
 
@@ -149,57 +150,33 @@ export function statLabel(k) {
   return k.replace(/^ITEM_MOD_|_SHORT$/g, "").replace(/_/g, " ").toLowerCase();
 }
 
-// ---------------------------------------------------------------- the plate
+// ---------------------------------------------------------------- the sheet
 
-// Where each slot's leader line lands on the figure (in a 200 x 384 plate:
-// 8 rows of 48px, so a row's centre is 24 + 48k).
-const ANCHOR = {
-  Head: [100, 28], Neck: [100, 60], Shoulder: [70, 78], Back: [80, 104], Chest: [96, 118], Shirt: [104, 136],
-  Tabard: [100, 160], Wrist: [52, 190],
-  Hands: [151, 214], Waist: [100, 186], Legs: [112, 262], Feet: [120, 360],
-  Finger0: [146, 222], Finger1: [55, 222], Trinket0: [124, 196], Trinket1: [84, 196],
-};
-
-function figure(slots) {
-  const s = svg("svg", { class: "figure", width: 200, height: 384, viewBox: "0 0 200 384", "aria-hidden": "true" });
-  const body = svg("g", { class: "body" }, s);
-  svg("circle", { cx: 100, cy: 28, r: 18 }, body);
-  svg("path", { d: "M100,46 L100,58" }, body);
-  svg("path", { d: "M68,70 L132,70 L124,186 L76,186 Z" }, body);
-  svg("path", { d: "M68,72 L54,140 L50,208 M132,72 L146,140 L150,208" }, body);
-  svg("circle", { cx: 50, cy: 214, r: 6 }, body);
-  svg("circle", { cx: 150, cy: 214, r: 6 }, body);
-  svg("path", { d: "M80,186 L90,276 L84,358 L72,366 M120,186 L110,276 L116,358 L128,366" }, body);
-  const lines = svg("g", { class: "leaders" }, s);
-  const row = (k) => 24 + 48 * k;
-  const draw = (slot, k, side) => {
-    const [ax, ay] = ANCHOR[slot];
-    const x0 = side < 0 ? 0 : 200, x1 = side < 0 ? 14 : 186;
-    svg("path", { d: `M${x0},${row(k)} L${x1},${row(k)} L${ax},${ay}` }, lines);
-    const it = slots[slot];
-    svg("circle", { cx: ax, cy: ay, r: 4, class: it ? `pin q${it.q ?? 1}` : "pin empty" }, lines);
-  };
-  LEFT.forEach((sl, k) => draw(sl, k, -1));
-  RIGHT.forEach((sl, k) => draw(sl, k, 1));
-  return s;
+// The character sheet, laid out as the game's: slots down both sides of the
+// character (icons against the model), the hands below. `center` is the 3D
+// model's stage. ups[slot]: "+4.9" when a better item is known.
+export function sheet(slots, ups, center) {
+  const side = (list, cls) => h("div", { class: `side ${cls}` }, list.map(sl => slotCell(sl, slots[sl], ups[sl])));
+  return h("div", { class: "sheet" },
+    side(LEFT, "left"), h("div", { class: "center" }, center), side(RIGHT, "right"),
+    h("div", { class: "hands" }, BOTTOM.map(sl => slotCell(sl, slots[sl], ups[sl]))));
 }
 
+function slotCell(slot, it, up) {
+  const note = up ? `${up} better is known for your ${label(slot).toLowerCase()}: see Do next` : null;
+  const art = it && it.id
+    ? h("a", { href: `${WOWHEAD}/item=${it.id}`, target: "_blank", rel: "noopener", class: "slotart", "data-item": it.id, "data-note": note || undefined, "aria-label": `${label(slot)}: ${it.name || "item " + it.id}` }, I.icon(it, "ico big"))
+    : h("span", { class: "slotart", title: `${label(slot)}: empty` }, I.emptyIcon(slot));
+  return h("div", { class: "cell" + (it ? "" : " none") }, art,
+    h("div", { class: "celltext" },
+      it && it.id ? h("a", { href: `${WOWHEAD}/item=${it.id}`, target: "_blank", rel: "noopener", class: `cellname q${it.q ?? 1}`, "data-item": it.id, "data-note": note || undefined, tabindex: -1 }, it.name || `item ${it.id}`) : null,
+      h("div", { class: "cellslot" }, label(slot), up ? h("span", { class: "up" }, ` ▲ ${up}`) : null)));
+}
+
+// An item anywhere on the page: its icon and name, with the game's tooltip.
 export const ilink = (it) => it && it.id
-  ? h("a", { href: `${WOWHEAD}/item=${it.id}`, target: "_blank", rel: "noopener", class: "item" }, h("i", { class: `chip q${it.q ?? 1}` }), it.name || `item ${it.id}`)
+  ? h("a", { href: `${WOWHEAD}/item=${it.id}`, target: "_blank", rel: "noopener", class: "item", "data-item": it.id }, I.icon(it), h("span", { class: `q${it.q ?? 1}n` }, it.name || `item ${it.id}`))
   : h("span", { class: "muted" }, "empty");
-
-function slotEntry(slot, it, up) {
-  return h("div", { class: "slot" },
-    h("div", { class: "slotname" }, h("span", {}, label(slot)), up ? h("span", { class: "up", title: "a better item is known" }, `▲ ${up}`) : null),
-    h("div", { class: "slotitem" }, ilink(it)));
-}
-
-export function plate(slots, ups) {
-  const col = list => h("div", { class: "col" }, list.map(sl => slotEntry(sl, slots[sl], ups[sl])));
-  return h("div", { class: "plate" },
-    h("div", { class: "doll" }, col(LEFT), figure(slots), col(RIGHT)),
-    h("div", { class: "weapons" }, BOTTOM.map(sl => slotEntry(sl, slots[sl], ups[sl]))));
-}
 
 // ---------------------------------------------------------------- choosing
 

@@ -1,7 +1,7 @@
 -- harness.lua -- run the REAL addon files under Lua 5.1 / luajit against a
 -- fake Forever API, drive game events, and check what the addon does.
 --
---   luajit test/harness.lua <path to SlopLeveler/>
+--   luajit test/harness.lua <path to ZugzugLeveler/>
 --
 -- Same idea as ghoul's addon/test/harness.lua: in game every handler runs
 -- inside pcall (Events.lua), so a typo never errors there -- it just quietly
@@ -76,6 +76,7 @@ function UnitName() return "Tester" end
 function GetRealmName() return "Realm" end
 function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
+function UnitSex() return 3 end
 function UnitOnTaxi() return W.taxi end
 function GetBindLocation() return "Goldshire" end
 function UnitFactionGroup() return W.faction or "Alliance" end
@@ -193,7 +194,7 @@ C_Container = {
 
 -- ------------------------------------------------------------ load addon
 local ns = {}
-local toc = assert(io.open(dir .. "/SlopLeveler.toc"))
+local toc = assert(io.open(dir .. "/ZugzugLeveler.toc"))
 local function load(rel)
   rel = rel:gsub("\\", "/")
   local path = dir .. "/" .. rel
@@ -206,13 +207,18 @@ local function load(rel)
     return
   end
   local chunk = assert(loadfile(path))
-  chunk("SlopLeveler", ns)
+  chunk("ZugzugLeveler", ns)
 end
 for line in toc:lines() do
   line = line:gsub("\r", "")
   if line ~= "" and not line:match("^##") then load(line) end
 end
 toc:close()
+-- The real quest data (AllTheThings') knows quest numbers these tests make up
+-- (401, 601 ...) as real Forever quests: the tests run with none, and the
+-- quest data tests bring their own (and check a few real facts).
+local REAL_QUESTDB = ns.QuestDB
+ns.QuestDB = {}
 
 local events = frames[1] -- Events.lua makes the first frame
 local function fire(e, ...) events.scripts.OnEvent(events, e, ...) end
@@ -242,11 +248,11 @@ end
 -- ================================================================ tests
 
 -- load
-fire("ADDON_LOADED", "SlopLeveler")
+fire("ADDON_LOADED", "ZugzugLeveler")
 fire("PLAYER_ENTERING_WORLD")
-check(SlopLevelerDB and SlopLevelerCharDB, "SavedVariables tables created")
-check(SlashCmdList.SLOPLEVELER, "slash command registered")
-local lev = SlashCmdList.SLOPLEVELER
+check(ZugzugLevelerDB and ZugzugLevelerCharDB, "SavedVariables tables created")
+check(SlashCmdList.ZUGZUGLEVELER, "slash command registered")
+local lev = SlashCmdList.ZUGZUGLEVELER
 
 -- XP math
 check(ns.XP.delta({ xp = 900, max = 1000, lvl = 5 }, 50, 1200, 6) == 150, "level-up delta = rest of old bar + new")
@@ -274,7 +280,7 @@ lev("rec mark grind here")
 lev("rec stop")
 check(not ns.Rec.active(), "recording stopped")
 
-local run = SlopLevelerDB.runs[1]
+local run = ZugzugLevelerDB.runs[1]
 local kinds = {}
 for _, e in ipairs(run.ev) do kinds[#kinds + 1] = e.e end
 local seq = table.concat(kinds, ",")
@@ -300,11 +306,11 @@ local src = ns.Route.ToLua(r)
 local reg
 local fakeNs = { Route = { Register = function(def) reg = def end } }
 local chunk = assert(loadstring(src))
-chunk("SlopLeveler", fakeNs)
+chunk("ZugzugLeveler", fakeNs)
 check(reg and #reg.steps == #r.steps and reg.steps[1].q == 101 and reg.steps[1].title == "Wolves", "exported Lua re-registers the same route")
 
 -- engine: follow the route on a fresh character state
-SlopLevelerCharDB.route = nil
+ZugzugLevelerCharDB.route = nil
 W.log, W.turnedIn = {}, {}
 W.map, W.x, W.y = 1429, 0.40, 0.50
 resetCalls()
@@ -317,7 +323,7 @@ finishObj(101)
 check(ns.Engine.index() == 3, "objectives complete advances to turn-in")
 turnin(101, 300)
 check(ns.Engine.index() == 4, "turn-in advances")
-check(SlopLevelerCharDB.stats[1] ~= nil, "per-step stats recorded")
+check(ZugzugLevelerCharDB.stats[1] ~= nil, "per-step stats recorded")
 -- out of order: 102 already done before we reach its steps
 W.turnedIn[102] = true; fire("QUEST_LOG_UPDATE")
 check(ns.Engine.index() == 7, "already-turned-in quest skips its steps, now " .. ns.Engine.index())
@@ -438,16 +444,16 @@ check(r0 == 0 and g0 == 1 and r1 == 1 and g1 == 0, "green ahead, red behind")
 lev("route use goto test")
 W.map, W.x, W.y, W.facing = 1429, 0.10, 0.10, 0
 resetCalls()
-SlashCmdList.SLOPLEVELERWAY("50 40 the tree")
+SlashCmdList.ZUGZUGLEVELERWAY("50 40 the tree")
 local t = ns.Way.current()
 check(t and t.manual and t.map == 1429 and near(t.x, 0.5) and t.text == "the tree", "/way x y text sets a manual target on this map")
 check(hasCall("SetUserWaypoint", 1429), "/way also sets the game's pin")
-SlashCmdList.SLOPLEVELERWAY("1430 20 30")
+SlashCmdList.ZUGZUGLEVELERWAY("1430 20 30")
 check(ns.Way.current().map == 1430, "/way <mapID> x y")
-SlashCmdList.SLOPLEVELERWAY("50 40")
+SlashCmdList.ZUGZUGLEVELERWAY("50 40")
 W.x, W.y = 0.499, 0.40; A.update()
 check(not ns.Way.current() or not ns.Way.current().manual, "arriving at a /way drops it, back to the route")
-SlashCmdList.SLOPLEVELERWAY("50 40"); SlashCmdList.SLOPLEVELERWAY("clear")
+SlashCmdList.ZUGZUGLEVELERWAY("50 40"); SlashCmdList.ZUGZUGLEVELERWAY("clear")
 check(not (ns.Way.current() or {}).manual, "/way clear")
 lev("arrow off"); lev("arrow on"); lev("pin off"); lev("pin on")
 
@@ -543,7 +549,7 @@ ns.Route.Register({ name = "swap test", steps = {
 W.log, W.turnedIn, W.level = {}, {}, 5
 lev("route use swap test")
 check(ns.Engine.index() == 1, "starts on the locked quest")
-SlashCmdList.SLOPLEVELERSWAP("")
+SlashCmdList.ZUGZUGLEVELERSWAP("")
 check(ns.Engine.index() == 2, "/swap moves on to the next quest")
 check(#ns.Engine.deferred() == 3, "its do + turn-in steps are set aside too")
 accept(602, "Open")
@@ -552,16 +558,252 @@ check(ns.Engine.index() == 6, "route runs past the set-aside steps: now " .. ns.
 check(table.concat(ns.UI.lines(), "\n"):find("3 set aside", 1, true), "window shows what is set aside")
 W.level = 6; fire("PLAYER_LEVEL_UP", 6)
 check(ns.Engine.index() == 1 and #ns.Engine.deferred() == 0, "level-up brings them back, from the first")
-SlashCmdList.SLOPLEVELERSWAP("")
+SlashCmdList.ZUGZUGLEVELERSWAP("")
 accept(601, "Locked")
 check(#ns.Engine.deferred() == 0, "accepting it anyway brings it back")
 check(ns.Engine.index() == 3, "and the route continues at its do step: " .. ns.Engine.index())
-SlashCmdList.SLOPLEVELERSWAP(""); lev("swap back")
+SlashCmdList.ZUGZUGLEVELERSWAP(""); lev("swap back")
 check(#ns.Engine.deferred() == 0, "/lev swap back")
+-- a regenerated route file renumbers its steps: set-aside marks are dropped on load
+check(ZugzugLevelerCharDB.routeSteps == 6, "route use records the step count")
+SlashCmdList.ZUGZUGLEVELERSWAP("")
+check(#ns.Engine.deferred() > 0, "something set aside before the reload")
+ns.Fire("SL_READY")
+check(#ns.Engine.deferred() > 0, "same route file: set-aside steps kept over a reload")
+local swapSteps = ns.Route.Get("swap test").steps
+table.insert(swapSteps, 1, { act = "note", text = "new first step" })
+resetCalls(); ns.Fire("SL_READY")
+check(#ns.Engine.deferred() == 0 and ZugzugLevelerCharDB.routeSteps == 7, "changed route file: set-aside steps cleared")
+table.remove(swapSteps, 1); ZugzugLevelerCharDB.routeSteps = 6
+-- ...and finished marks ahead of your place belonged to the old numbering
+ZugzugLevelerCharDB.step, ZugzugLevelerCharDB.sticky = 3, { [1] = true, [5] = true }
+ZugzugLevelerCharDB.routeSteps = 99; ns.Fire("SL_READY")
+local sk = ZugzugLevelerCharDB.sticky
+check(sk[1] and sk[2] and not sk[5] and ZugzugLevelerCharDB.step == 3, "changed route file: done = everything before your place, nothing after")
+
+-- a turn-in for a quest you do not have, its accept already passed: set aside, said why
+ns.Route.Register({ name = "missing test", steps = {
+  { act = "accept", q = 651, title = "Skipped", npc = "Quinn" },
+  { act = "accept", q = 652, title = "Held" },
+  { act = "turnin", q = 651, title = "Skipped" },
+  { act = "accept", q = 653, title = "Follow-up", after = { 651 } },
+  { act = "turnin", q = 652, title = "Held" },
+  { act = "turnin", q = 653, title = "Follow-up" },
+} })
+W.log, W.turnedIn = {}, {}
+local function printed(s, from)
+  for k = from or 1, #W.printed do if W.printed[k]:find(s, 1, true) then return true end end
+end
+lev("route use missing test")
+lev("step 2")
+local mark = #W.printed
+accept(652, "Held")
+check(ns.Engine.index() == 5, "turn-in of a quest not in the log, and its follow-up's accept, are passed: now " .. ns.Engine.index())
+check(ZugzugLevelerCharDB.deferred[3] == "missing", "and set aside as missing")
+check(ZugzugLevelerCharDB.deferred[4] == "missing", "the follow-up the NPC will not offer is set aside too")
+check(printed("not in your quest log", mark) and printed("from Quinn", mark), "chat says why, and who gives it")
+check(printed("comes after Skipped", mark), "chat says what the follow-up waits on")
+W.log[652].complete = true; turnin(652, 0)
+check(ns.Engine.index() == 7 and ZugzugLevelerCharDB.deferred[6] == "missing", "the follow-up's turn-in is passed as well: " .. ns.Engine.index())
+W.level = 6; fire("PLAYER_LEVEL_UP", 6)
+check(ZugzugLevelerCharDB.deferred[3] == "missing" and ns.Engine.index() == 7, "a level-up does not bring a missing quest back")
+accept(651, "Skipped")
+check(ns.Engine.index() == 3 and not ZugzugLevelerCharDB.deferred[3] and not ZugzugLevelerCharDB.deferred[4],
+  "picking the quest up brings its turn-in and follow-up back: " .. ns.Engine.index())
+-- a follow-up whose lead-in you still have is offered as normal
+check(not ns.Engine.missing(4, ns.Route.Get("missing test").steps), "follow-up of a quest in your log: not missing")
 W.level = 5
 
+-- a hearth is done once you are where the route goes next, so the optimizer
+-- sees past it (in the city, the city's steps can be the closest)
+ns.Route.Register({ name = "hearth test", steps = {
+  { act = "accept", q = 711, map = 1429, cont = 0, wx = 100, wy = 100 },
+  { act = "hearth", text = "Hearth to the city" },
+  { act = "accept", q = 712, map = 1430, cont = 0, wx = 900, wy = 900 },
+  { act = "accept", q = 713, map = 1430, cont = 0, wx = 910, wy = 900 },
+  { act = "accept", q = 714, map = 1430, cont = 0, wx = 920, wy = 900 },
+} })
+W.log, W.turnedIn, W.map, W.x, W.y = {}, {}, 1429, 0.1, 0.1
+lev("route use hearth test")
+local hs = ns.Route.Get("hearth test").steps
+check(not ns.Engine.isDone(2, hs), "hearth not done while still in the old zone")
+local w = ns.Optimizer.window()
+check(not w, "old zone: the optimizer stops at the hearth")
+W.map = 1430
+check(ns.Engine.isDone(2, hs), "in the zone the route continues in: hearth done")
+w = ns.Optimizer.window()
+check(w and #w.idx == 3 and w.idx[1] == 3, "and the optimizer sees the city's steps past it, not the one left behind")
+mark = #W.printed
+fire("QUEST_LOG_UPDATE")
+check(ns.Engine.index() == 3 and ZugzugLevelerCharDB.deferred[1] == "left", "the step left in the old zone is set aside: " .. ns.Engine.index())
+check(printed("you moved on from", mark), "chat names what was left behind")
+W.level = 6; fire("PLAYER_LEVEL_UP", 6); W.level = 5
+check(ZugzugLevelerCharDB.deferred[1] == "left", "a level-up does not bring it back")
+lev("swap back")
+check(not ZugzugLevelerCharDB.deferred[1], "/lev swap back does")
+W.map = 1429
+
+-- the coach: why the route wants this, a heads-up on a zone change, and a
+-- question only when stuck or lost
+local asked = {}
+StaticPopupDialogs = {}
+function StaticPopup_Show(which, text) asked[#asked + 1] = { text = text, dlg = StaticPopupDialogs[which] } end
+ns.Route.Register({ name = "coach test", sections = { { from = 1, name = "1-6 Startzone" }, { from = 4, name = "6-10 Nextzone" } }, steps = {
+  { act = "accept", q = 801, title = "Near Quest", npc = "Ana", map = 1429, x = 0.5, y = 0.5 },
+  { act = "complete", q = 801, obj = 1, map = 1429, x = 0.6, y = 0.5, hint = "Kill boars" },
+  { act = "turnin", q = 801, title = "Near Quest", npc = "Ana", map = 1429, x = 0.5, y = 0.5 },
+  { act = "accept", q = 802, title = "Far Quest", npc = "Bo", map = 1430, x = 0.3, y = 0.3 },
+  { act = "complete", q = 802, obj = 1, map = 1430, x = 0.4, y = 0.3 },
+} })
+W.log, W.turnedIn, W.map, W.x, W.y, W.level, W.combat = {}, {}, 1429, 0.5, 0.5, 5, false
+lev("route use coach test")
+accept(801, "Near Quest"); accept(999, "Stray Quest")
+W.log[801].objs = { { text = "Boar slain: 0/5", finished = false } }; fire("QUEST_LOG_UPDATE")
+check(ns.Engine.index() == 2 and ns.Coach.state() == "questing", "coach: questing at the step")
+local why = table.concat(ns.Coach.why(), "\n")
+check(why:find("Still to do: Boar slain: 0/5", 1, true) and why:find("Kill boars", 1, true), "why: what is left, and the guide's hint")
+check(why:find("Stray Quest", 1, true) and why:find("/lev questlog", 1, true), "why: names your quests the route skips, and what to do")
+check(why:find('"1-6 Startzone", for levels 1-6; you are on pace', 1, true), "why: the guide part and your pace")
+-- stuck: 12 minutes at the step with nothing moving
+W.x = 0.6; ns.Coach.tick()
+W.combat = true; W.gt = W.gt + ns.Coach.STUCK_SECS + 1; ns.Coach.tick()
+check(#asked == 0, "never asks in combat")
+W.combat = false; mark = #W.printed; ns.Coach.tick()
+check(#asked == 1 and asked[1].text:find("has not moved for 12 minutes", 1, true), "stuck: asks whether to set the step aside")
+check(printed("/swap does the same", mark), "the question is in chat too, with the command")
+ns.Coach.tick()
+check(#asked == 1, "asked once, not every tick")
+mark = #W.printed
+asked[1].dlg.OnAccept()
+check(ZugzugLevelerCharDB.deferred[2] and ns.Engine.index() == 4, "yes: set aside, the route goes on: " .. ns.Engine.index())
+check(printed("next stop is in Map1430", mark) and printed('RestedXP\'s "1-6 Startzone" is done there, and its next part, "6-10 Nextzone", starts in Map1430: Far Quest', mark),
+  "heads-up: the next step is in another zone, and why")
+check(ns.Coach.state() == "travelling" and table.concat(ns.UI.lines(), "\n"):find("in Map1430", 1, true), "window: where the step is")
+why = table.concat(ns.Coach.why(), "\n")
+check(why:find("It is in Map1430; you are in Map1429", 1, true) and why:find("1 level under it", 1, true), "why: the other zone, and you are under its levels")
+-- away: minutes in a zone the route has nothing in
+ns.Coach.tick()
+check(#asked == 2 and asked[2].text:find("The route has nothing in Map1429", 1, true), "away: offers your own quests")
+asked[2].dlg.OnAccept()
+check(ZugzugLevelerCharDB.route == "Quest log" and ZugzugLevelerCharDB.parked and ZugzugLevelerCharDB.parked.step == 4, "quest log mode, your place in the guide kept")
+-- back: where the guide goes on
+W.map = 1430; ns.Coach.tick()
+check(#asked == 3 and asked[3].text:find("Back to the guide?", 1, true), "back: offers the guide when you reach its zone")
+asked[3].dlg.OnAccept()
+check(ZugzugLevelerCharDB.route == "coach test" and ns.Engine.index() == 4 and ZugzugLevelerCharDB.deferred[2] and not ZugzugLevelerCharDB.parked,
+  "resumed where you left it, set-aside steps and all")
+W.gt = W.gt + 11; ns.Coach.tick()
+check(ZugzugLevelerCharDB.coach and ZugzugLevelerCharDB.coach.state == "questing" and ZugzugLevelerCharDB.coach.why[1]:find("^Step 4 of 5"), "the why is saved for the companion page")
+lev("route off"); lev("route resume")
+check(ZugzugLevelerCharDB.route == "coach test" and ns.Engine.index() == 4, "/lev route off, then resume")
+StaticPopupDialogs, StaticPopup_Show = nil, nil
+W.map, W.combat = 1429, nil
+
+-- the quest data: what AllTheThings records, read as its code reads it
+check(REAL_QUESTDB[91921].sq[1] == 91920 and REAL_QUESTDB[91920].sq[1] == 430 and REAL_QUESTDB[430].sq[1] == 429,
+  "real data: Return to Quinn (Again) needs Wild Eyes, which needs Return to Quinn, which needs Wild Hearts")
+check(REAL_QUESTDB[6323].races[1] == 5 and REAL_QUESTDB[840].bc == 1 and REAL_QUESTDB[91920].r == 1,
+  "real data: Ride to the Undercity is Undead only, Conscript of the Horde a breadcrumb, Wild Eyes Horde")
+ns.QuestDB = {
+  [900] = { lvl = 1, at = { 1429, 0.5, 0.5 } },
+  [901] = { sq = { 900 }, lvl = 1, r = 2, at = { 1429, 0.5, 0.5 } },
+  [902] = { r = 1 },
+  [903] = { lvl = 8 },
+  [904] = { sq = { 905 } }, [905] = { bc = 1 },
+  [906] = { alt = { 907 } },
+  [908] = { lvl = { 1, 4 } },
+}
+W.log, W.turnedIn, W.level, W.faction = {}, {}, 5, "Alliance"
+local QI = ns.QInfo
+local b = QI.blocked(901)
+check(b and b.kind == "prereq" and b.need[1] == 900, "a quest whose lead-in you have not done: blocked, naming it")
+check(QI.blocked(902).why == "faction" and QI.blocked(903).kind == "level" and QI.blocked(903).lvl == 8, "the other faction's quest; one above your level")
+check(not QI.blocked(904), "a breadcrumb lead-in does not block")
+W.turnedIn[907] = true
+check(QI.blocked(906).why == "alt" and QI.blocked(908).why == "toohigh", "locked by the quest you did instead; too high a level for it")
+check(not QI.blocked(4242), "a quest the data does not know is never blocked")
+W.turnedIn[900] = true
+check(not QI.blocked(901), "lead-in done: open")
+W.turnedIn[900] = nil
+-- in the route: set aside with the real reason, back when it opens
+ns.Route.Register({ name = "qdb test", steps = {
+  { act = "accept", q = 901, title = "Second", map = 1429, x = 0.5, y = 0.5 },
+  { act = "accept", q = 903, title = "Higher", map = 1429, x = 0.5, y = 0.5 },
+  { act = "turnin", q = 901, title = "Second", map = 1429, x = 0.5, y = 0.5 },
+  { act = "note", text = "end" },
+} })
+mark = #W.printed
+lev("route use qdb test")
+check(ZugzugLevelerCharDB.deferred[1] == "missing" and ZugzugLevelerCharDB.deferred[2] == "level", "set aside: one needs a lead-in, one a level")
+check(printed("because it needs quest 900 first", mark) and printed("it needs level 8 (you are 5). It comes back when you level up", mark), "chat says exactly why")
+W.turnedIn[900] = true; fire("QUEST_TURNED_IN", 900)
+check(not ZugzugLevelerCharDB.deferred[1] and ns.Engine.index() == 1, "turning in the lead-in brings it back: " .. ns.Engine.index())
+W.level = 8; fire("PLAYER_LEVEL_UP", 8)
+check(not ZugzugLevelerCharDB.deferred[2], "the level one comes back on level-up")
+-- the route doing the lead-in first: not missing
+W.turnedIn, W.level = {}, 5
+ns.Route.Register({ name = "qdb order", steps = {
+  { act = "accept", q = 900, title = "First" }, { act = "turnin", q = 900, title = "First" },
+  { act = "accept", q = 901, title = "Second" },
+} })
+lev("route use qdb order")
+check(not ns.Engine.missing(3, ns.Route.Get("qdb order").steps), "a lead-in the route does first does not block")
+check(#QI.availableOn(1429) >= 1, "quests you can take on a map, from the data's quest givers")
+ns.QuestDB, W.faction, W.level = {}, nil, 5
+
+-- every race/class has a route; a route file for another one does not load
+check(ns.Coach.routeFor() == "RXP Human Warrior", "the route offered to a Human Warrior: " .. tostring(ns.Coach.routeFor()))
+check(ns.Route.Get("RXP Human Warrior") and not ns.Route.Get("RXP Undead Mage") and not ns.Route.Get("RXP Orc Warlock"),
+  "only this character's route files are kept in memory")
+check(ns.Route.Skip("Scourge", "MAGE") and not ns.Route.Skip("Human", "WARRIOR"), "Route.Skip by race file name and class")
+
+-- route options from the page: a mage leaves cooking out
+local R = ns.Route
+check(R.category({ act = "train", text = "Train Cooking" }) == "cooking" and R.category({ act = "goto", text = "Create Linen Bandages until your skill is 40 or higher" }) == "firstaid"
+  and R.category({ act = "train", text = "Train Staves" }) == "weapons" and R.category({ act = "train", text = "Train your class spells" }) == "classtrain"
+  and R.category({ act = "accept", q = 1, title = "Cooking quest" }) == nil, "step kinds, from RestedXP's own wording; quests are not touched")
+ns.RoutePrefs = { skip = { cooking = true } }
+check(not ns.Engine.applies({ act = "train", text = "Train Cooking" }) and ns.Engine.applies({ act = "train", text = "Train First Aid" }),
+  "a kind you left out is passed over, the rest stays")
+ns.RoutePrefs = nil
+
+-- a listed mob's NPC number, learned when you target it (for the page's loot list)
+local oldGUID, oldName = UnitGUID, UnitName
+UnitGUID = function(u) if u == "target" then return "Creature-0-4170-0-12-448-000012ABCD" end end
+UnitName = function(u) if u == "target" then return "Hogger" end return oldName(u) end
+fire("PLAYER_TARGET_CHANGED")
+check(ZugzugLevelerDB.npcIds and ZugzugLevelerDB.npcIds.Hogger == 448, "targeting Hogger learns NPC 448")
+UnitGUID = function(u) if u == "target" then return "Player-4170-0ABC" end end
+UnitName = function(u) if u == "target" then return "Somebody" end return oldName(u) end
+fire("PLAYER_TARGET_CHANGED")
+check(not ZugzugLevelerDB.npcIds.Somebody, "players and unlisted creatures are not kept")
+UnitGUID, UnitName = oldGUID, oldName
+
+-- the 3D character in game, and the new name's commands
+lev("model")
+check(_G.ZugzugLevelerModel and _G.ZugzugLevelerModel:IsShown(), "/lev model shows your character in a model frame")
+lev("model")
+check(not _G.ZugzugLevelerModel:IsShown(), "and /lev model again hides it")
+check(SLASH_ZUGZUGLEVELER3 == "/zug" and SlashCmdList.ZUGZUGLEVELER, "/zug works as well as /lev")
+
+-- live updates: the game's chat log, asked for, never silent
+local logging = false
+LoggingChat = function(on) if on ~= nil then logging = on end return logging end
+mark = #W.printed
+lev("live on")
+check(logging and ZugzugLevelerDB.live == true and printed("WoWChatLog.txt", mark), "/lev live on turns the game's chat log on and says where it goes")
+lev("live check")
+check(printed("live check " .. W.t, mark), "/lev live check prints the marker the companion looks for")
+lev("live off")
+check(not logging and ZugzugLevelerDB.live == false, "/lev live off")
+local reloaded = false
+ReloadUI = function() reloaded = true end
+lev("sync")
+check(reloaded and ZugzugLevelerCharDB.syncAt == W.t, "/lev sync saves now (a UI reload)")
+LoggingChat, ReloadUI = nil, nil
+
 -- buttons: quest item + target macro, never touched in combat
-local item, tgt = _G.SlopLevelerItemButton, _G.SlopLevelerTargetButton
+local item, tgt = _G.ZugzugLevelerItemButton, _G.ZugzugLevelerTargetButton
 local function attr(b, k) return b.attrs and b.attrs[k] end
 for _, b in ipairs({ item, tgt }) do
   b.attrs = {}
@@ -594,7 +836,7 @@ ns.Route.Register({ name = "split test", steps = {
 W.log, W.turnedIn = {}, {}
 lev("route use split test")
 play(30); accept(801)
-local bs = SlopLevelerDB.best["split test"].seg
+local bs = ZugzugLevelerDB.best["split test"].seg
 check(bs[1] and math.abs(bs[1] - 30) < 2, "step 1 timed ~30s: " .. tostring(bs[1]))
 lev("route use split test")                      -- 801 already accepted: fast-forward
 check(math.abs(bs[1] - 30) < 2, "fast-forwarded step does not set a fake best")
@@ -770,7 +1012,7 @@ local has = {}
 for _, s in ipairs(ns.Engine.route().steps) do has[s.act .. s.q] = true end
 check(has.turnin1001 and not has.complete1001, "objectives done: it becomes a turn-in step")
 local cur = ns.Engine.step()
-SlashCmdList.SLOPLEVELERSWAP("")
+SlashCmdList.ZUGZUGLEVELERSWAP("")
 local gone = true
 for _, s in ipairs(ns.Engine.route().steps) do if s.q == cur.q then gone = false end end
 check(gone, "/swap sets that quest aside in quest log mode")
@@ -789,7 +1031,7 @@ C_TaxiMap = { GetAllTaxiNodes = function() return {
   { nodeID = 2, name = "Far Camp", state = 1, position = CreateVector2D(0.98, 0.98) },
   { nodeID = 3, name = "Unknown Spot", state = 2, position = CreateVector2D(0.5, 0.5) },
 } end }
-SlopLevelerCharDB.flights, SlopLevelerCharDB.speed = nil, nil
+ZugzugLevelerCharDB.flights, ZugzugLevelerCharDB.speed = nil, nil
 fire("TAXIMAP_OPENED")
 check(#ns.Flight.known() == 2, "learns the 2 known flight points, not the unknown one")
 local walk = ns.Flight.travel({ 0, 20, 20 }, { 0, 980, 980 })
@@ -810,7 +1052,7 @@ W.gt = W.gt + 40; W.x, W.y = 0.97, 0.97; tick(1)         -- flying
 W.taxi = false; W.gt = W.gt + 0.5; tick(1)               -- landed, 41 s after the last ground sample
 check(ns.Flight.measured() and math.abs(ns.Flight.fly() - math.sqrt(2) * 940 / 41) < 0.5, ("flight speed measured: %.1f yd/s"):format(ns.Flight.fly()))
 lev("flight")
-SlopLevelerCharDB.flights = nil
+ZugzugLevelerCharDB.flights = nil
 
 -- danger warnings (RXP's data, here a small stand-in)
 check(ns.DangerData and #ns.DangerData.Alliance > 200, "generated danger data loaded")
@@ -841,7 +1083,7 @@ lev("danger on")
 ns.DangerData = realData; ns.Danger.reset()
 
 -- options panel: Blizzard's Settings, proxy settings over our own db
-check(W.addonCategory and W.addonCategory.name == "sl0p.leveler", "registered under Options > AddOns")
+check(W.addonCategory and W.addonCategory.name == "zugzugleveler", "registered under Options > AddOns")
 local nCheck, nDrop = 0, 0
 for _, s in pairs(W.settings) do if s.options then nDrop = nDrop + 1 else nCheck = nCheck + 1 end end
 check(nCheck == 10 and nDrop == 2, ("10 toggles and 2 dropdowns (%d, %d)"):format(nCheck, nDrop))
@@ -878,7 +1120,7 @@ check(rows:find("train the next rank", 1, true), "capped: train reminder")
 lev("prof way")
 local tw = ns.Way.current()
 check(tw and tw.manual and tw.map == 1453, "/lev prof way: the arrow to the Expert tailoring trainer in Stormwind")
-SlashCmdList.SLOPLEVELERWAY("clear")
+SlashCmdList.ZUGZUGLEVELERWAY("clear")
 C_TradeSkillUI = {
   GetFilteredRecipeIDs = function() return { 1, 2, 3, 4 } end,
   GetRecipeInfo = function(id) return ({
@@ -899,9 +1141,16 @@ W.profs = {}
 -- export for the companion site: map bounds + character snapshot
 W.map, W.x, W.y = 1429, 0.3, 0.3
 fire("PLAYER_ENTERING_WORLD")
-local mb = SlopLevelerDB.maps and SlopLevelerDB.maps[1429]
+local mb = ZugzugLevelerDB.maps and ZugzugLevelerDB.maps[1429]
 check(mb and mb.cont == 0 and mb.x0 == 0 and mb.x1 == 1000 and mb.y1 == 1000 and mb.name == "Map1429", "map bounds recorded for the site")
-check(SlopLevelerCharDB.char and SlopLevelerCharDB.char.level == W.level and SlopLevelerCharDB.char.class == "WARRIOR", "character snapshot")
+check(ZugzugLevelerCharDB.char and ZugzugLevelerCharDB.char.level == W.level and ZugzugLevelerCharDB.char.class == "WARRIOR", "character snapshot")
+check(ZugzugLevelerCharDB.char.raceID == 1 and ZugzugLevelerCharDB.char.sex == 3, "snapshot keeps race ID and sex (the site's 3D model)")
+-- the game closing reports XP 0 of 0: the last good snapshot stays
+local good = ZugzugLevelerCharDB.char
+local xpMax0 = W.xpMax; W.xpMax = 0
+fire("PLAYER_LOGOUT")
+check(ZugzugLevelerCharDB.char == good, "a closing game's empty numbers do not replace the snapshot")
+W.xpMax = xpMax0
 
 -- gear for the site's Gear tab: equipped, equippable bag items, spec, skills, stats, gold
 do
@@ -923,7 +1172,8 @@ do
   C_Item.IsEquippableItem = function(link) return items[id(link)] ~= nil end
   C_TooltipInfo = { GetHyperlink = function(link)
     if id(link) ~= 2 then return { lines = {} } end
-    return { lines = { { leftText = "Worn Shortsword" }, { leftText = "1 - 3 Damage", rightText = "Speed 1.90" }, { leftText = "(1.1 damage per second)" } } }
+    local white = { GetRGB = function() return 1, 1, 1 end }
+    return { lines = { { leftText = "Worn Shortsword", leftColor = white }, { leftText = "1 - 3 Damage", rightText = "Speed 1.90" }, { leftText = "(1.1 damage per second)" } } }
   end }
   local worn = { [16] = "|Hitem:2::|h", [7] = "|Hitem:6::|h" }
   local slotIDs = { HeadSlot = 1, LegsSlot = 7, MainHandSlot = 16 }
@@ -944,11 +1194,13 @@ do
   local lines = { { isHeader = true, name = "Weapon Skills" }, { name = "Swords", rank = 5, maxRank = 25 }, { isHeader = true, name = "Armor Proficiencies" }, { name = "Cloth", rank = 1, maxRank = 1 } }
   C_SkillInfo = { GetNumSkillLines = function() return #lines end, GetSkillLineInfo = function(i) return lines[i] end }
   fire("PLAYER_EQUIPMENT_CHANGED")
-  local g = SlopLevelerCharDB.gear
+  local g = ZugzugLevelerCharDB.gear
   local mh = g and g.slots.MainHand
   check(mh and mh.name == "Worn Shortsword" and mh.stats.ITEM_MOD_STRENGTH_SHORT == 1 and mh.dur == 30, "equipped item with stats and durability, by slot name")
   check(mh and mh.cid == 2 and mh.sc == 7 and mh.bind == 2, "item class, subclass and binding saved")
   check(mh and #mh.tip == 2 and mh.tip[1] == "1 - 3 Damage|Speed 1.90", "tooltip lines with numbers kept, left|right")
+  check(mh and #mh.tt == 3 and mh.tt[1] == "ffffff\tWorn Shortsword\tffd100\t" and mh.tt[2] == "ffd100\t1 - 3 Damage\tffd100\tSpeed 1.90",
+    "whole tooltip kept with the game's line colours (yellow when none)")
   check(g and g.slots.Legs and g.slots.Legs.sub == "Cloth" and g.slots.Legs.loc == "INVTYPE_LEGS" and not g.slots.Head, "legs saved, empty slots left out")
   check(g and #g.bags == 2 and g.bags[1].id == 8, "only equippable bag items saved")
   W.secretStat = nil
@@ -958,14 +1210,14 @@ do
   W.secret = true
   fire("PLAYER_EQUIPMENT_CHANGED")
   W.secret = false
-  check(SlopLevelerCharDB.gear.stats.sta == nil and SlopLevelerCharDB.gear.money == nil, "secret values are never saved")
+  check(ZugzugLevelerCharDB.gear.stats.sta == nil and ZugzugLevelerCharDB.gear.money == nil, "secret values are never saved")
   fire("PLAYER_EQUIPMENT_CHANGED")
   fire("PLAYER_MONEY")
   local t0 = W.t
   W.money = 2000; fire("PLAYER_MONEY")
-  check(#SlopLevelerCharDB.money == 1 and SlopLevelerCharDB.money[1][2] == 2000, "gold changes within 2 min update one sample")
+  check(#ZugzugLevelerCharDB.money == 1 and ZugzugLevelerCharDB.money[1][2] == 2000, "gold changes within 2 min update one sample")
   W.t = W.t + 300; W.money = 2500; fire("PLAYER_MONEY")
-  check(#SlopLevelerCharDB.money == 2 and SlopLevelerCharDB.money[2][1] == t0 + 300, "a later change adds a sample")
+  check(#ZugzugLevelerCharDB.money == 2 and ZugzugLevelerCharDB.money[2][1] == t0 + 300, "a later change adds a sample")
 
   -- the item catalogue: quest rewards at the NPC, read before Assist accepts
   local oldLink = GetQuestItemLink
@@ -978,28 +1230,28 @@ do
   function GetNumQuestRewards() return 1 end
   function GetTitleText() return "Wanted: Bones" end
   local oldAccept = AcceptQuest
-  AcceptQuest = function() seenAtAccept = SlopLevelerDB.quests and SlopLevelerDB.quests[555]; W.qf.closed = true; called("AcceptQuest", W.qf.id) end
+  AcceptQuest = function() seenAtAccept = ZugzugLevelerDB.quests and ZugzugLevelerDB.quests[555]; W.qf.closed = true; called("AcceptQuest", W.qf.id) end
   W.qf.id, W.qf.choices = 555, 3
   ns.Route.Register({ name = "reward test", steps = { { act = "accept", q = 555 } } })
   lev("route use reward test")
   fire("QUEST_DETAIL")
-  local qr = SlopLevelerDB.quests and SlopLevelerDB.quests[555]
+  local qr = ZugzugLevelerDB.quests and ZugzugLevelerDB.quests[555]
   check(qr and #qr.choice == 2 and qr.choice[1] == 8 and qr.choice[2] == 9 and qr.reward[1] == 6, "quest rewards recorded, equippable only")
   check(seenAtAccept ~= nil, "rewards are read before Assist accepts the quest")
-  check(SlopLevelerDB.items[9] and SlopLevelerDB.items[9].name == "Ring of Secrets" and SlopLevelerDB.items[9].req == 5, "reward items kept in the catalogue")
+  check(ZugzugLevelerDB.items[9] and ZugzugLevelerDB.items[9].name == "Ring of Secrets" and ZugzugLevelerDB.items[9].req == 5, "reward items kept in the catalogue")
   GetQuestItemLink, AcceptQuest, W.qf.closed, W.qf.choices, W.qf.id = oldLink, oldAccept, nil, 0, nil
   -- the quest log, with objectives
   W.log[701] = { title = "Wolves", complete = false, objs = { { text = "Wolf killed: 3/8", numFulfilled = 3, numRequired = 8, finished = false } } }
   W.log[702] = { title = "Mail", complete = true, objs = {} }
   fire("QUEST_LOG_UPDATE")
-  local ql = SlopLevelerCharDB.questLog or {}
+  local ql = ZugzugLevelerCharDB.questLog or {}
   local byQ = {}
   for _, e in ipairs(ql) do byQ[e.q] = e end
   check(byQ[701] and byQ[701].title == "Wolves" and byQ[701].objs[1].have == 3 and byQ[701].objs[1].need == 8 and not byQ[701].done, "quest log saved with objective progress")
   check(byQ[702] and byQ[702].done == true, "finished quests marked done")
   W.log[701], W.log[702] = nil, nil
   fire("QUEST_TURNED_IN", 555, 100, 0)
-  check(SlopLevelerCharDB.turnedIn and SlopLevelerCharDB.turnedIn[555] == W.t, "turned-in quests remembered per character")
+  check(ZugzugLevelerCharDB.turnedIn and ZugzugLevelerCharDB.turnedIn[555] == W.t, "turned-in quests remembered per character")
 
   -- merchants
   function GetMerchantNumItems() return 2 end
@@ -1007,9 +1259,9 @@ do
   C_MerchantFrame = { GetItemInfo = function(i) return { price = 100 * i } end }
   function UnitName(u) return u == "npc" and "Vendor Vic" or "Tester" end
   fire("MERCHANT_SHOW"); fire("MERCHANT_SHOW")
-  local v = SlopLevelerDB.vendors and SlopLevelerDB.vendors[6]
+  local v = ZugzugLevelerDB.vendors and ZugzugLevelerDB.vendors[6]
   check(v and #v == 1 and v[1].npc == "Vendor Vic" and v[1].price == 100 and v[1].map == W.map, "merchant items with seller, place and price, once per seller")
-  check(SlopLevelerDB.vendors[77] == nil, "items you cannot equip are not kept")
+  check(ZugzugLevelerDB.vendors[77] == nil, "items you cannot equip are not kept")
   function UnitName() return "Tester" end
 end
 
@@ -1045,11 +1297,14 @@ lev("export")
 local before = #W.printed
 lev("route use rxp test"); lev("why")
 local said = table.concat(W.printed, "\n", before + 1)
-check(said:find("step %d+:"), "/lev why reports the step")
+check(said:find("Step %d+ of %d+:"), "/lev why explains the step")
+before = #W.printed; lev("why debug")
+said = table.concat(W.printed, "\n", before + 1)
+check(said:find("step %d+:"), "/lev why debug reports what the engine sees")
 lev("runs")
 lev("help")
 
--- optional: write SlopLevelerDB the way WoW writes SavedVariables
+-- optional: write ZugzugLevelerDB the way WoW writes SavedVariables
 -- (["key"] = value, array items followed by "-- [n]"), for tools/routes.py
 if arg[2] then
   local out = {}
@@ -1070,8 +1325,8 @@ if arg[2] then
     return table.concat(lines, "\n")
   end
   local f = assert(io.open(arg[2], "w"))
-  f:write("\nSlopLevelerDB = " .. ser(SlopLevelerDB, 0) .. "\n")
-  f:write("SlopLevelerCharDB = " .. ser(SlopLevelerCharDB, 0) .. "\n")
+  f:write("\nZugzugLevelerDB = " .. ser(ZugzugLevelerDB, 0) .. "\n")
+  f:write("ZugzugLevelerCharDB = " .. ser(ZugzugLevelerCharDB, 0) .. "\n")
   f:close()
 end
 

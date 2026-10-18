@@ -23,7 +23,7 @@ func TestRunningSelf(t *testing.T) {
 	if !running(self) {
 		t.Fatalf("running(%q) = false for the test binary itself", self)
 	}
-	if running("no-such-sl0p-process.exe") {
+	if running("no-such-zugzug-process.exe") {
 		t.Fatal("running() found a process that does not exist")
 	}
 }

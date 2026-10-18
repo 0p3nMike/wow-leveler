@@ -3,13 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>sl0p.leveler field ledger</title>
+<!-- no Referer: Wowhead's file host refuses requests that name another site (the 3D viewer adds its stylesheet from there) -->
+<meta name="referrer" content="no-referrer">
+<title>zugzugleveler field ledger</title>
 <link rel="stylesheet" href="style.css">
 <script type="module" src="app.js"></script>
 </head>
 <body>
 <header class="top">
-  <div class="brand">sl0p.leveler <span>field ledger</span></div>
+  <div class="brand">zugzugleveler <span>field ledger</span></div>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
     <button role="tab" data-tab="gear">Gear</button>
@@ -23,14 +25,21 @@
     <label>Character <select id="charPick"></select></label>
     <label>Theme <select id="themePick"></select></label>
     <span id="saved" class="muted"></span>
+    <button id="phoneBtn" class="btn" type="button" aria-expanded="false">On your phone</button>
+    <button id="settingsBtn" class="btn" type="button" aria-expanded="false">Settings</button>
   </div>
 </header>
+<section id="phone" class="phone" hidden></section>
+<section id="settings" class="settings" hidden></section>
 <main id="view"></main>
 <footer class="foot">
   <p>The page shows what the game last saved. The game saves on /reload and logout, not while you play.</p>
   <p>Quest and item links open <a href="https://www.wowhead.com/forever" target="_blank" rel="noopener">Wowhead's Forever pages</a>.
   Routes, danger data and stat weights come from RestedXP Guides (CC BY-NC-SA 4.0), profession data from ProfessionLevelingGuide (MIT),
-  themes from panefx and their designers, and the BigBlueTerm437 font from VileR and Nerd Fonts (CC BY-SA 4.0).</p>
+  themes from panefx and their designers, and the BigBlueTerm437 font from VileR and Nerd Fonts (CC BY-SA 4.0).
+  The 3D character is drawn by Wowhead's model viewer from Wowhead's model files, fetched to this PC for personal use;
+  World of Warcraft models are Blizzard Entertainment's. jQuery (MIT) runs the viewer. Quest facts (lead-ins, quest givers) come from
+  AllTheThings (MIT), headings are set in UnifrakturMaguntia (SIL OFL 1.1), and phone pairing draws its QR code with qrcode-generator (MIT).</p>
 </footer>
 </body>
 </html>

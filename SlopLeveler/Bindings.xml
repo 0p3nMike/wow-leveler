@@ -1,4 +1,0 @@
-<Bindings>
-	<Binding name="CLICK SlopLevelerItemButton:LeftButton" header="SLOPLEVELER" category="ADDONS"/>
-	<Binding name="CLICK SlopLevelerTargetButton:LeftButton" category="ADDONS"/>
-</Bindings>

@@ -7,10 +7,10 @@
 param([switch]$Remove)
 $ErrorActionPreference = 'Stop'
 
-$exe  = Join-Path $PSScriptRoot 'sl0pleveler-watch.exe'
-$link = Join-Path ([Environment]::GetFolderPath('Startup')) 'sl0p.leveler companion.lnk'
+$exe  = Join-Path $PSScriptRoot 'zugzugleveler-watch.exe'
+$link = Join-Path ([Environment]::GetFolderPath('Startup')) 'zugzugleveler companion.lnk'
 
-Get-Process sl0pleveler-watch -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process zugzugleveler-watch -ErrorAction SilentlyContinue | Stop-Process -Force
 
 if ($Remove) {
     if (Test-Path $link) { Remove-Item $link }
@@ -27,7 +27,7 @@ $s = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
 $s.TargetPath = $exe
 $s.Arguments = '-watch'
 $s.WorkingDirectory = $PSScriptRoot
-$s.Description = 'Opens the sl0p.leveler page when WoW starts'
+$s.Description = 'Opens the zugzugleveler page when WoW starts'
 $s.Save()
 
 Start-Process $exe -ArgumentList '-watch' -WorkingDirectory $PSScriptRoot

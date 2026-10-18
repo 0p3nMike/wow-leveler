@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="CLICK ZugzugLevelerItemButton:LeftButton" header="ZUGZUGLEVELER" category="ADDONS"/>
+	<Binding name="CLICK ZugzugLevelerTargetButton:LeftButton" category="ADDONS"/>
+	<Binding name="ZUGZUGLEVELER_SYNC" category="ADDONS">ZugzugLeveler_Sync()</Binding>
+</Bindings>

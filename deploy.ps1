@@ -11,7 +11,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
-$src = Join-Path $PSScriptRoot "SlopLeveler"
+$src = Join-Path $PSScriptRoot "ZugzugLeveler"
 $clientDir = Join-Path $WowRoot $Client
 if (-not (Test-Path $clientDir)) {
   $have = (Get-ChildItem $WowRoot -Directory | Where-Object Name -like "_*_" | ForEach-Object Name) -join ", "
@@ -20,7 +20,18 @@ if (-not (Test-Path $clientDir)) {
 $flavor = Get-Content (Join-Path $clientDir ".flavor.info") -ErrorAction SilentlyContinue | Select-Object -Last 1
 $addons = Join-Path $clientDir "Interface\AddOns"
 New-Item -ItemType Directory -Force $addons | Out-Null
-$dst = Join-Path $addons "SlopLeveler"
+$dst = Join-Path $addons "ZugzugLeveler"
+
+# the addon was called SlopLeveler until 2026-10-18: drop that old junction if it
+# points into this checkout (rmdir removes the link itself, never what it points at)
+$old = Join-Path $addons "SlopLeveler"
+if (Test-Path -LiteralPath $old) {
+  $o = Get-Item -LiteralPath $old -Force
+  if ($o.LinkType -eq "Junction" -and "$($o.Target)" -like "$PSScriptRoot*") {
+    cmd /c rmdir "$old"
+    Write-Output "removed the old link: $old"
+  }
+}
 
 if (Test-Path $dst) {
   $item = Get-Item $dst -Force

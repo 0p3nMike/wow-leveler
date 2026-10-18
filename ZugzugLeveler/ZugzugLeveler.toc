@@ -1,0 +1,44 @@
+## Interface: 16001
+## AllowLoadGameType: forever, camelot
+## Title: zugzugleveler
+## Notes: Leveling guide for WoW: Forever: RestedXP routes for every race and class with an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
+## Author: michael-slop
+## Version: 0.2.0-alpha
+## Category: Quests & Leveling
+## X-Credits: RestedXP Guides (CC BY-NC-SA 4.0), AllTheThings (MIT)
+## SavedVariables: ZugzugLevelerDB
+## SavedVariablesPerCharacter: ZugzugLevelerCharDB
+
+Compat.lua
+Events.lua
+XP.lua
+Recorder.lua
+Route.lua
+Engine.lua
+Waypoint.lua
+Arrow.lua
+Buttons.lua
+Assist.lua
+Splits.lua
+Downtime.lua
+MapPath.lua
+data\Danger.lua
+data\Professions.lua
+data\Quests.lua
+QuestInfo.lua
+Professions.lua
+Danger.lua
+Flight.lua
+Optimizer.lua
+QuestLog.lua
+Coach.lua
+Live.lua
+Model.lua
+UI.lua
+Options.lua
+Commands.lua
+Export.lua
+routes\Example.lua
+routes\rxp\routes.xml
+routes\custom\Planner.lua
+routes\custom\Prefs.lua

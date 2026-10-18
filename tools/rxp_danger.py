@@ -1,10 +1,10 @@
-"""rxp_danger.py -- RestedXP's Forever dangerous-mob data -> SlopLeveler/data/Danger.lua
+"""rxp_danger.py -- RestedXP's Forever dangerous-mob data -> ZugzugLeveler/data/Danger.lua
 
 RestedXP Guides (https://github.com/RestedXP/RXPGuides) is CC BY-NC-SA 4.0;
 the output is an adaptation under the same license, credited, personal and
 non-commercial.
 
-    python -I tools/rxp_danger.py <RXPGuides clone> [--out SlopLeveler/data/Danger.lua]
+    python -I tools/rxp_danger.py <RXPGuides clone> [--out ZugzugLeveler/data/Danger.lua]
 
 Source: DB/forever/dangerousMobs.lua -- faction -> zone -> mob -> entries
 { MinLevel, MaxLevel, Classification, Movement, Notes, Location }, where
@@ -57,7 +57,7 @@ def lua_str(s):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("rxp")
-    ap.add_argument("--out", default=os.path.join("SlopLeveler", "data", "Danger.lua"))
+    ap.add_argument("--out", default=os.path.join("ZugzugLeveler", "data", "Danger.lua"))
     a = ap.parse_args(argv)
     data = load(a.rxp)
     maps = map_ids(a.rxp)
@@ -69,7 +69,7 @@ def main(argv=None):
         % git_commit(a.rxp),
         "-- DB/forever/dangerousMobs.lua. Licensed CC BY-NC-SA 4.0,",
         "-- https://creativecommons.org/licenses/by-nc-sa/4.0/ . Changes: reshaped for",
-        "-- sl0p.leveler; zone names turned into uiMapIDs. Personal, non-commercial. Credit: RestedXP.",
+        "-- zugzugleveler; zone names turned into uiMapIDs. Personal, non-commercial. Credit: RestedXP.",
         "",
         "local _, ns = ...",
         "",

@@ -1,4 +1,4 @@
--- plg_professions.lua -- ProfessionLevelingGuide's data -> SlopLeveler/data/Professions.lua
+-- plg_professions.lua -- ProfessionLevelingGuide's data -> ZugzugLeveler/data/Professions.lua
 --
 --   luajit tools/plg_professions.lua <ProfessionLevelingGuide clone> [out file]
 --
@@ -16,7 +16,7 @@
 --   trainers[Profession] = { { rank = "...", where = "...", a = {map, x, y}, h = {map, x, y} } }
 --   items[lower name] = itemID   (from Daten_IDs.lua "i:<id>" entries)
 
-local dir, out = arg[1], arg[2] or "SlopLeveler/data/Professions.lua"
+local dir, out = arg[1], arg[2] or "ZugzugLeveler/data/Professions.lua"
 assert(dir, "usage: luajit tools/plg_professions.lua <ProfessionLevelingGuide dir> [out]")
 
 -- German keys in the data -> English names (Core/BSG_Berufe.lua's own table)

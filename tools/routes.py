@@ -1,6 +1,6 @@
 """routes.py -- read recorded runs out of SavedVariables and report on them.
 
-    python -I tools/routes.py <path to WTF/Account/<ACCOUNT>/SavedVariables/SlopLeveler.lua>
+    python -I tools/routes.py <path to WTF/Account/<ACCOUNT>/SavedVariables/ZugzugLeveler.lua>
         [--run N] [--report out.md] [--route out.lua --name "My route"]
 
 With no --run it lists the runs. With --run N it prints a markdown report:
@@ -257,14 +257,14 @@ def to_route(r, name):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("saved", help="SavedVariables/SlopLeveler.lua")
+    ap.add_argument("saved", help="SavedVariables/ZugzugLeveler.lua")
     ap.add_argument("--run", type=int)
     ap.add_argument("--report", help="write the report here instead of stdout")
     ap.add_argument("--route", help="write run N as a routes/*.lua file")
     ap.add_argument("--name", help="route name for --route")
     a = ap.parse_args(argv)
 
-    db = load(a.saved).get("SlopLevelerDB") or {}
+    db = load(a.saved).get("ZugzugLevelerDB") or {}
     runs = db.get("runs") or []
     if not a.run:
         if not runs:

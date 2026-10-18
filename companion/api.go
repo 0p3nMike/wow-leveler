@@ -9,6 +9,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -19,10 +20,15 @@ import (
 )
 
 type Server struct {
-	paths Paths
-	addr  string
-	mu    sync.Mutex
-	cache map[string]cached
+	paths   Paths
+	addr    string
+	wowhead *Wowhead
+	chat    *ChatLog
+	backup  *Backups
+	lan     *LAN
+	handler http.Handler // the guarded routes, for the phone listener
+	mu      sync.Mutex
+	cache   map[string]cached
 }
 
 type cached struct {
@@ -32,7 +38,10 @@ type cached struct {
 }
 
 func NewServer(p Paths, addr string) *Server {
-	return &Server{paths: p, addr: addr, cache: map[string]cached{}}
+	exes := gameExes(p.clientDir())
+	_, port, _ := net.SplitHostPort(addr)
+	return &Server{paths: p, addr: addr, wowhead: NewWowhead(), chat: NewChatLog(p.clientDir()), cache: map[string]cached{},
+		backup: NewBackups(func() bool { return anyRunning(exes) }), lan: NewLAN(port)}
 }
 
 // load parses a file once per modification.
@@ -57,7 +66,7 @@ func (s *Server) accountDB(acct string) (map[string]any, error) {
 	if !ok {
 		return nil, fmt.Errorf("no account %q", acct)
 	}
-	v, err := s.load(f, func() (any, error) { return ReadSV(f, "SlopLevelerDB") })
+	v, err := s.load(f, func() (any, error) { return ReadSV(f, "ZugzugLevelerDB") })
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +74,7 @@ func (s *Server) accountDB(acct string) (map[string]any, error) {
 }
 
 func (s *Server) charDB(c CharFile) (map[string]any, error) {
-	v, err := s.load(c.Path, func() (any, error) { return ReadSV(c.Path, "SlopLevelerCharDB") })
+	v, err := s.load(c.Path, func() (any, error) { return ReadSV(c.Path, "ZugzugLevelerCharDB") })
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +285,23 @@ func (s *Server) maps(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out, nil)
 }
 
+// /api/npcs: NPC numbers the addon learned for the danger list's mobs
+// (Danger.lua: ns.db.npcIds[name] = id, when you target one), all accounts.
+func (s *Server) npcs(w http.ResponseWriter, r *http.Request) {
+	accts, _ := s.paths.Scan()
+	out := map[string]any{}
+	for a := range accts {
+		if db, err := s.accountDB(a); err == nil {
+			if m, ok := db["npcIds"].(map[string]any); ok {
+				for k, v := range m {
+					out[k] = v
+				}
+			}
+		}
+	}
+	writeJSON(w, out, nil)
+}
+
 // byKey: a Lua table keyed by number, whether it came back as a map or (when
 // its keys happened to be 1..n) as a list.
 func byKey(v any) map[string]any {
@@ -338,7 +364,7 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Header.Get("X-Sl0p-Leveler") != "1" {
+	if r.Header.Get("X-Zugzug") != "1" {
 		http.Error(w, "missing header", http.StatusForbidden)
 		return
 	}
@@ -361,14 +387,18 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"file": f, "steps": len(body.Steps)}, err)
 }
 
-// guard: only this machine, only this page.
+// guard: only this machine, only this page (and a paired phone, lan.go).
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
 		if h, _, ok := strings.Cut(host, ":"); ok {
 			host = h
 		}
-		if host != "127.0.0.1" && host != "localhost" {
+		if !loopback(r.RemoteAddr) {
+			if !s.lan.phone(w, r) {
+				return
+			}
+		} else if host != "127.0.0.1" && host != "localhost" {
 			http.Error(w, "local only", http.StatusForbidden)
 			return
 		}
@@ -394,6 +424,19 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/version", s.version)
 	mux.HandleFunc("/api/plan", s.plan)
 	mux.HandleFunc("/api/themes", s.themes)
+	mux.HandleFunc("/api/looks", s.gate(s.wowhead.looks))
+	mux.HandleFunc("/api/mapart", s.gate(s.wowhead.mapArt))
+	mux.HandleFunc("/api/live", s.chat.serve)
+	mux.HandleFunc("/api/backups", s.backups)
+	mux.HandleFunc("/api/lan", s.lanAPI)
+	mux.HandleFunc("/api/ask", s.ask)
+	mux.HandleFunc("/api/prefs", s.prefs)
+	mux.HandleFunc("/api/npcs", s.npcs)
+	mux.HandleFunc("/api/settings", s.settings)
+	mux.HandleFunc("/api/quests", s.gate(s.wowhead.quests))
+	mux.HandleFunc("/api/questdb", s.literal("data/Quests.lua", "ns.QuestDB ="))
+	mux.HandleFunc("/localfont/", serveLocalFont(fontDir()))
+	mux.HandleFunc("/wh/", s.gate(s.wowhead.files))
 	// The page's files are embedded (no modification time to revalidate
 	// against), so tell the browser not to reuse them: an updated companion
 	// must never run with last version's CSS or scripts.
@@ -401,5 +444,11 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		static.ServeHTTP(w, r)
 	}))
-	return s.guard(mux)
+	s.handler = s.guard(mux)
+	if s.lan.loadConfig().LAN { // phone mode was on: back on
+		if err := s.lan.Start(s.handler); err != nil {
+			fmt.Println("phone mode:", err)
+		}
+	}
+	return s.handler
 }

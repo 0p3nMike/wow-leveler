@@ -96,7 +96,7 @@ func (s *Server) themes(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimSuffix(e.Name(), ".toml")
 		src := "panefx"
 		if strings.HasPrefix(id, "survey-") {
-			src = "sl0p.leveler"
+			src = "zugzugleveler"
 		}
 		add(parseTheme(id, string(b), src))
 	}
@@ -128,7 +128,7 @@ func (s *Server) themes(w http.ResponseWriter, r *http.Request) {
 
 func rank(src string) int {
 	switch src {
-	case "sl0p.leveler":
+	case "zugzugleveler":
 		return 0
 	case "yours":
 		return 1
