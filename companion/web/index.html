@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>sl0p.leveler</title>
+<title>sl0p.leveler field ledger</title>
 <link rel="stylesheet" href="style.css">
 <script type="module" src="app.js"></script>
 </head>
 <body>
 <header class="top">
-  <div class="brand">sl0p<span>.leveler</span></div>
+  <div class="brand">sl0p.leveler <span>field ledger</span></div>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
     <button role="tab" data-tab="runs">Runs</button>
@@ -19,15 +19,16 @@
   </nav>
   <div class="who">
     <label>Character <select id="charPick"></select></label>
+    <label>Theme <select id="themePick"></select></label>
     <span id="saved" class="muted"></span>
-    <button id="themeBtn" class="ghost" title="Light / dark">◐</button>
   </div>
 </header>
 <main id="view"></main>
-<footer class="foot muted">
-  Reads what the addon saves; the game writes it on <code>/reload</code> and logout, not while you play.
-  Quest and item links go to <a href="https://www.wowhead.com/forever" target="_blank" rel="noopener">Wowhead (Forever)</a>.
-  Routes and danger data: RestedXP Guides, CC BY-NC-SA 4.0. Profession data: ProfessionLevelingGuide, MIT.
+<footer class="foot">
+  <p>The page shows what the game last saved. The game saves on /reload and logout, not while you play.</p>
+  <p>Quest and item links open <a href="https://www.wowhead.com/forever" target="_blank" rel="noopener">Wowhead's Forever pages</a>.
+  Routes and danger data come from RestedXP Guides (CC BY-NC-SA 4.0), profession data from ProfessionLevelingGuide (MIT),
+  themes from panefx and their designers, and the BigBlueTerm437 font from VileR and Nerd Fonts (CC BY-SA 4.0).</p>
 </footer>
 </body>
 </html>

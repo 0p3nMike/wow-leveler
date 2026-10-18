@@ -7,7 +7,8 @@
 --       map's corners (0,0) and (1,1). With it the site can put recorded paths
 --       (map x/y) and route stops (world x/y) on one canvas. Your map and the
 --       ones above it, recorded as you travel.
---   SlopLevelerCharDB.char        = name, realm, class, race, faction, level, xp, xpMax, at
+--   SlopLevelerCharDB.char        = name, realm, class, race, faction, level, xp, xpMax,
+--                                   rested, map/x/y (where you were), at
 --   SlopLevelerCharDB.profSnap    = your professions and skill (Professions.lua's P.mine())
 -- The site writes back only one file: routes/custom/Planner.lua (its Planner
 -- tab), which this addon loads on /reload like any other route.
@@ -41,12 +42,14 @@ function E.recordMaps()
 end
 
 function E.snapshot()
-  local cur, max, lvl = C.xp()
+  local cur, max, lvl, rested = C.xp()
   local _, class = C.try(UnitClass, "player")
   local _, race = C.try(UnitRace, "player")
+  local map, x, y = C.mapPos()
   ns.cdb.char = {
     name = C.try(UnitName, "player"), realm = C.try(GetRealmName), class = class, race = race,
-    faction = C.try(UnitFactionGroup, "player"), level = lvl, xp = cur, xpMax = max, at = C.epoch(),
+    faction = C.try(UnitFactionGroup, "player"), level = lvl, xp = cur, xpMax = max, rested = rested,
+    map = map, x = x, y = y, at = C.epoch(),
   }
   if ns.Prof then ns.cdb.profSnap = ns.Prof.mine() end
 end

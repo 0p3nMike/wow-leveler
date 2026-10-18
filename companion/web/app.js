@@ -10,7 +10,7 @@ const ACTS = {
   complete: { label: "Do", color: "var(--s2)" },
   turnin: { label: "Turn in", color: "var(--s3)" },
 };
-const OTHER = { label: "Other", color: "var(--muted)" };
+const OTHER = { label: "Other", color: "var(--graphite)" };
 const STATES = [ // fixed order = the validated slot order
   { key: "combat", label: "Fighting", color: "var(--s1)" },
   { key: "drink", label: "Eat / drink", color: "var(--s2)" },
@@ -100,7 +100,80 @@ function timeRows(byZone) {
     .slice(0, 12);
 }
 
-function tile(k, v, d) { return h("div", { class: "tile" }, h("div", { class: "k" }, k), h("div", { class: "v" }, v), d ? h("div", { class: "d" }, d) : null); }
+function facts(pairs) {
+  return h("dl", { class: "facts" }, pairs.filter(Boolean).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]));
+}
+
+// The XP bar the way the game draws it: 20 bubbles, filled XP, rested hatched after it.
+function xpBar(cur, max, rested) {
+  const W = 1000, H = 48, n = 20, gap = 4, bw = (W - gap * (n - 1)) / n;
+  const s = svg("svg", { class: "xpbar", viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", role: "img",
+    "aria-label": `${fmtNum(cur)} of ${fmtNum(max)} XP${rested ? `, ${fmtNum(rested)} rested` : ""}` });
+  const defs = svg("defs", {}, s);
+  const pat = svg("pattern", { id: "hatch", width: 8, height: 8, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+  svg("rect", { width: 8, height: 8, fill: "var(--wash)" }, pat);
+  svg("line", { x1: 0, y1: 0, x2: 0, y2: 8, stroke: "var(--ink)", "stroke-width": 3, opacity: 0.45 }, pat);
+  const clip = svg("clipPath", { id: "bubbles" }, defs);
+  for (let i = 0; i < n; i++) {
+    svg("rect", { x: i * (bw + gap), y: 0, width: bw, height: H }, clip);
+    svg("rect", { class: "bubble", x: i * (bw + gap), y: 0, width: bw, height: H }, s);
+  }
+  const f = max > 0 ? Math.min(cur / max, 1) : 0;
+  const r = max > 0 ? Math.min((cur + (rested || 0)) / max, 1) : 0;
+  const g = svg("g", { "clip-path": "url(#bubbles)" }, s);
+  if (r > f) svg("rect", { class: "rested", x: f * W, y: 0, width: (r - f) * W, height: H }, g);
+  svg("rect", { class: "fill", x: 0, y: 0, width: f * W, height: H }, g);
+  return s;
+}
+
+// Where something is in the world: {cont, wx, wy}, from a step or a map point.
+function worldPoint(p, maps) {
+  if (p.wx != null) return { cont: p.cont ?? (maps[p.map] || {}).cont, wx: p.wx, wy: p.wy };
+  const b = p.map && maps[p.map];
+  if (b && p.x != null) return { cont: b.cont, wx: b.x0 + p.y * (b.x1 - b.x0), wy: b.y0 + p.x * (b.y1 - b.y0) };
+  return null;
+}
+
+// Yards and a compass point from a to b. World x runs north, world y west.
+function bearing(a, b) {
+  if (!a || !b || a.cont !== b.cont) return null;
+  const north = b.wx - a.wx, east = -(b.wy - a.wy);
+  const deg = (Math.atan2(east, north) * 180 / Math.PI + 360) % 360;
+  const dir = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
+  return { yd: Math.hypot(north, east), dir };
+}
+
+// Field notes: plain observations from this character's own data.
+function fieldNotes(db, prof) {
+  const notes = [];
+  const t = {};
+  let total = 0;
+  for (const [zone, parts] of Object.entries(db.downtime || {})) {
+    for (const [k, v] of Object.entries(parts)) { t[k] = (t[k] || 0) + v; total += v; }
+    const zt = Object.values(parts).reduce((a, b) => a + b, 0);
+    if (zt > 600 && (parts.drink || 0) / zt > 0.2)
+      notes.push([`${Math.round(parts.drink / zt * 100)}%`, ` of your time in ${zone} went to eating and drinking. That is the biggest thing to shave there.`]);
+  }
+  if (total > 900 && (t.idle || 0) / total > 0.15)
+    notes.push([`${Math.round(t.idle / total * 100)}%`, " of your time was spent standing still: vendors, quest text and breaks."]);
+  if (total > 900 && (t.dead || 0) > 120)
+    notes.push([fmtTime(t.dead), " spent dead or as a ghost. The danger warnings mark what tends to cause it."]);
+  const s = db.session || {};
+  if ((s.total || 0) > 2000) {
+    const q = (s.quest || 0) / s.total;
+    notes.push([`${Math.round(q * 100)}%`, q >= 0.5 ? " of this session's XP came from quest turn-ins." : " of this session's XP came from quests; the rest came from kills."]);
+  }
+  const sp = db.split || {};
+  if (sp.timed >= 3) notes.push([fmtTime(Math.abs(sp.delta)), `${sp.delta <= 0 ? " ahead of" : " behind"} your best over the last ${sp.timed} timed steps${sp.golds ? `, with ${sp.golds} new best${sp.golds > 1 ? "s" : ""}` : ""}.`]);
+  const snap = db.char || {};
+  if (snap.rested > 0) notes.push([fmtNum(snap.rested), " rested XP left. Kills give double until it runs out."]);
+  for (const p of Array.isArray(db.profSnap) ? db.profSnap : []) {
+    if (p.max && p.rank >= p.max && p.max < 300) notes.push([`${p.rank}/${p.max}`, ` in ${p.name}: it is capped, so visit a trainer before crafting more.`]);
+  }
+  const deferred = entries(db.deferred).length;
+  if (deferred) notes.push([String(deferred), ` step${deferred > 1 ? "s are" : " is"} set aside with /swap. They come back when you level up.`]);
+  return notes.slice(0, 6);
+}
 
 // ------------------------------------------------------------------ overview
 
@@ -111,21 +184,60 @@ async function overview(view) {
   const sess = db.session || {};
   const span = (sess.seen || 0) - (sess.start || 0);
   const rate = span > 60 ? (sess.total || 0) / span * 3600 : null;
-  view.append(h("div", { class: "hero" },
-    h("div", {}, h("div", { class: "label" }, "XP per hour, this session"), h("div", { class: "big" }, fmtNum(rate))),
-    h("div", { class: "ink2" }, `${snap.name || c.name} · level ${snap.level ?? "?"} ${snap.race || ""} ${(snap.class || "").toLowerCase()}`)));
-  const routeName = db.route || "none";
-  let routeLen = "";
-  if (db.route) { try { const r = await cached("route:" + db.route, `/api/route?name=${encodeURIComponent(db.route)}`); routeLen = ` / ${r.steps.length}`; } catch { } }
-  const split = db.split || {};
-  view.append(h("div", { class: "tiles" },
-    tile("Level progress", snap.xpMax ? `${Math.floor(snap.xp / snap.xpMax * 100)}%` : "--", snap.xpMax ? `${fmtNum(snap.xp)} / ${fmtNum(snap.xpMax)} XP` : ""),
-    tile("Route", routeName, `step ${db.step ?? "-"}${routeLen}${db.plan ? ` · optimized, ${(db.plan.list || []).length} left` : ""}`),
-    tile("Session", fmtTime(span > 0 ? span : null), `${fmtNum(sess.total)} XP · ${fmtNum(sess.quest)} from quests`),
-    tile("Vs best splits", split.timed ? `${split.delta > 0 ? "+" : "-"}${fmtTime(Math.abs(split.delta))}` : "--", split.timed ? `over ${split.timed} steps · ${split.golds || 0} gold` : "no repeat steps yet"),
-    tile("Speeds", db.speed ? `${(db.speed.run || 7).toFixed(1)} yd/s` : "--", db.speed && db.speed.fly ? `flight ${db.speed.fly.toFixed(1)} yd/s (measured)` : "flight: not measured yet")));
+  const maps = await cached("maps", "/api/maps");
+  const { list, missing } = await upcoming(db, 1);
+  const next = list[0];
+
+  // the hero: where you are on the climb
+  const hero = h("section", { class: "hero" });
+  view.append(hero);
+  if (snap.level) {
+    hero.append(h("div", { class: "xpwrap" },
+      h("div", { class: "lvl" }, String(snap.level)),
+      xpBar(snap.xp || 0, snap.xpMax || 1, snap.rested || 0),
+      h("div", { class: "lvl next" }, String(snap.level + 1))));
+    const left = (snap.xpMax || 0) - (snap.xp || 0);
+    const eta = rate && left > 0 ? left / rate * 3600 : null;
+    hero.append(h("div", { class: "eta" },
+      eta ? `Level ${snap.level + 1} in ${fmtTime(eta)}` : `${fmtNum(left)} XP to level ${snap.level + 1}`,
+      h("span", { class: "muted" }, rate ? `  at ${fmtNum(rate)} XP an hour` : "")));
+  } else {
+    hero.append(h("div", { class: "eta" }, `${snap.name || c.name}`),
+      h("p", { class: "sub" }, "Your level and XP appear here after the game saves once with the updated addon (restart the game, then /reload)."));
+  }
+  if (next) {
+    const b = bearing(worldPoint(snap, maps), worldPoint(next.s, maps));
+    hero.append(h("div", { class: "nextstop" },
+      h("span", { class: "mark" }, "►"), h("span", { class: "muted" }, "Next stop"),
+      actBadge(next.s.act), qlink(next.s.q, stepText(next.s)),
+      b ? h("span", { class: "dist" }, `${fmtNum(b.yd)} yd ${b.dir}`) : h("span", { class: "muted" }, "(distance once this zone is recorded)")));
+  } else if (missing) {
+    hero.append(h("p", { class: "sub" }, `The route "${missing}" is no longer installed. Pick another in game with /lev route list.`));
+  }
+
   const g = h("div", { class: "grid" });
   view.append(g);
+  const notes = fieldNotes(db);
+  const fn = h("section", { class: "card" }, h("h2", {}, "Field notes"));
+  g.append(fn);
+  if (notes.length) fn.append(h("ul", { class: "notes" }, notes.map(([fig, text]) => h("li", {}, h("span", { class: "fig" }, fig), text))));
+  else fn.append(h("p", { class: "sub" }, "Notes appear once there is more to go on: play for a while with the addon on, then /reload."));
+
+  let routeLen = "";
+  if (db.route) { try { const r = await cached("route:" + db.route, `/api/route?name=${encodeURIComponent(db.route)}`); routeLen = ` of ${r.steps.length}`; } catch { } }
+  const split = db.split || {};
+  const se = h("section", { class: "card" }, h("h2", {}, "This session"));
+  g.append(se);
+  se.append(facts([
+    ["Character", `${snap.name || c.name}, level ${snap.level ?? "?"} ${snap.race || ""} ${(snap.class || "").toLowerCase()}`],
+    ["Played", fmtTime(span > 0 ? span : null)],
+    ["XP gained", `${fmtNum(sess.total)} (${fmtNum(sess.quest)} from quests)`],
+    ["Route", db.route ? `${db.route}, step ${db.step ?? "?"}${routeLen}` : "none"],
+    db.plan ? ["Order", `optimized, ${(db.plan.list || []).length} steps left in this stretch`] : null,
+    ["Against your best", split.timed ? `${split.delta > 0 ? "+" : "−"}${fmtTime(Math.abs(split.delta))} over ${split.timed} steps` : "no repeated steps yet"],
+    ["Running speed", db.speed && db.speed.run ? `${db.speed.run.toFixed(1)} yards a second` : "not measured yet"],
+    ["Flight speed", db.speed && db.speed.fly ? `${db.speed.fly.toFixed(1)} yards a second` : "measured on your first flight"],
+  ]));
   const t = h("div", { class: "card" }, h("h2", {}, "Where the time went"), h("p", { class: "sub" }, "This character, by zone (fighting, eating and drinking, moving, flying, standing)."));
   g.append(t);
   stackedBars(t.appendChild(h("div")), { rows: timeRows(db.downtime), keys: STATES });
@@ -140,7 +252,7 @@ async function overview(view) {
 async function runsTab(view) {
   const runs = S.state.runs || [];
   if (!runs.length) return view.append(h("div", { class: "empty" }, "No recorded runs yet. In game: /lev rec start, play, then /reload."));
-  const pick = h("select", {}, runs.map((r, i) => h("option", { value: i }, `#${r.n} ${r.name || ""} ${r.char || ""} · lvl ${r.startLevel ?? "?"}-${r.endLevel ?? "now"} · ${r.events} events`)));
+  const pick = h("select", {}, runs.map((r, i) => h("option", { value: i }, `Run ${r.n}: ${r.name || r.char || ""}, levels ${r.startLevel ?? "?"} to ${r.endLevel ?? "now"} (${r.events} events)`)));
   pick.value = String(S.runPick ?? runs.length - 1);
   view.append(h("div", { class: "row" }, h("label", {}, "Run ", pick)));
   const box = h("div");
@@ -151,15 +263,19 @@ async function runsTab(view) {
     box.replaceChildren();
     const run = await cached(`run:${r.account}:${r.n}`, `/api/run?account=${encodeURIComponent(r.account)}&n=${r.n}`);
     const a = analyze(run);
-    box.append(h("div", { class: "hero" },
-      h("div", {}, h("div", { class: "label" }, "XP per hour (active time)"), h("div", { class: "big" }, fmtNum(a.rate))),
-      h("div", { class: "ink2" }, `${run.char || ""} · ${run.preset ? run.preset + " XP preset" : ""}`)));
-    box.append(h("div", { class: "tiles" },
-      tile("Active time", fmtTime(a.active), "gaps over 5 min not counted"),
-      tile("Levels", `${run.startLevel ?? "?"} → ${run.endLevel ?? "now"}`),
-      tile("XP", fmtNum(a.total), `${a.total ? Math.round(a.quest / a.total * 100) : 0}% from quests`),
-      tile("Quests", `${a.turnins} turned in`, `${a.accepts} accepted`),
-      tile("Deaths · flights", `${a.deaths} · ${a.flights}`)));
+    box.append(h("section", { class: "hero" },
+      h("div", { class: "eta" }, a.rate ? `${fmtNum(a.rate)} XP an hour` : `${fmtNum(a.total)} XP`,
+        h("span", { class: "muted" }, `  over ${fmtTime(a.active)} of active play`)),
+      facts([
+        ["Character", run.char || "?"],
+        ["Levels", `${run.startLevel ?? "?"} to ${run.endLevel ?? "now"}`],
+        ["XP", `${fmtNum(a.total)}, ${a.total ? Math.round(a.quest / a.total * 100) : 0}% from quests`],
+        ["Quests", `${a.turnins} turned in, ${a.accepts} accepted`],
+        ["Deaths", String(a.deaths)],
+        ["Flights", String(a.flights)],
+        run.preset ? ["XP preset", run.preset] : null,
+        ["Active time", `${fmtTime(a.active)} (gaps over 5 minutes are left out)`],
+      ])));
     const g = h("div", { class: "grid" });
     box.append(g);
     const c1 = h("div", { class: "card wide" }, h("h2", {}, "XP over time"), h("p", { class: "sub" }, "Cumulative XP against active play time. Hover for each turn-in."));
@@ -241,9 +357,9 @@ async function mapTab(view) {
     const mapID = +pick.value, Wm = 1000, Hm = 667;
     box.append(h("div", { class: "legend" },
       Object.values(ACTS).map(a => h("span", {}, h("i", { style: `background:${a.color}` }), a.label)),
-      h("span", {}, h("i", { style: "background:var(--muted)" }), "Other"),
-      h("span", {}, h("i", { class: "line", style: "background:var(--ink-2)" }), "Your path"),
-      danger.checked ? h("span", { class: "status-critical" }, "! danger") : null));
+      h("span", {}, h("i", { style: "background:var(--graphite)" }), "Other"),
+      h("span", {}, h("i", { class: "line", style: "background:var(--graphite)" }), "Your path"),
+      danger.checked ? h("span", { class: "status-critical" }, "! danger and patrols") : null));
     const host = h("div", { class: "chart" });
     box.append(host);
     const s = svg("svg", { viewBox: `0 0 ${Wm} ${Hm}`, role: "img", "aria-label": `route on ${maps[mapID].name}` });
@@ -251,6 +367,9 @@ async function mapTab(view) {
     for (let k = 1; k < 10; k++) {
       svg("line", { class: "gridline", x1: k * Wm / 10, x2: k * Wm / 10, y1: 0, y2: Hm }, s);
       svg("line", { class: "gridline", x1: 0, x2: Wm, y1: k * Hm / 10, y2: k * Hm / 10 }, s);
+      // the same 0-100 coordinates /way and the game's map use
+      svg("text", { x: k * Wm / 10 + 4, y: 18 }, s).textContent = String(k * 10);
+      svg("text", { x: 4, y: k * Hm / 10 - 4 }, s).textContent = String(k * 10);
     }
     const tipEl = h("div", { class: "tip" });
     host.append(tipEl);
@@ -267,7 +386,7 @@ async function mapTab(view) {
         d += `${lastT && t - lastT < 120 ? "L" : "M"}${(x / 10000 * Wm).toFixed(1)},${(y / 10000 * Hm).toFixed(1)}`;
         lastT = t;
       }
-      if (d) svg("path", { d, fill: "none", stroke: "var(--ink-2)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: 0.55 }, s);
+      if (d) svg("path", { d, fill: "none", stroke: "var(--graphite)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: 0.55 }, s);
     }
     // danger
     if (danger.checked) {
@@ -288,10 +407,11 @@ async function mapTab(view) {
           const q = toMap(p, mapID, maps);
           if (!q) continue;
           const g = svg("g", {}, s);
-          svg("circle", { cx: q[0] * Wm, cy: q[1] * Hm, r: 7, fill: "var(--critical)", stroke: "var(--surface)", "stroke-width": 2 }, g);
-          const t = svg("text", { x: q[0] * Wm, y: q[1] * Hm + 4, "text-anchor": "middle" }, g);
-          t.textContent = "!"; t.style.fill = "#fff"; t.style.fontWeight = "700";
-          g.addEventListener("mousemove", () => tip(q[0] * Wm, q[1] * Hm, `<b>${e.n}</b> ${e.c !== "Normal" ? e.c.toLowerCase() + " " : ""}${e.lo}${e.hi !== e.lo ? "-" + e.hi : ""}<br>${e.note || ""} ${e.mv ? "· " + e.mv : ""}`));
+          const cx = q[0] * Wm, cy = q[1] * Hm;
+          svg("circle", { cx, cy, r: 8, fill: "var(--critical)", stroke: "var(--raised)", "stroke-width": 2 }, g);
+          svg("rect", { x: cx - 1.5, y: cy - 5, width: 3, height: 6, fill: "#fff" }, g);
+          svg("rect", { x: cx - 1.5, y: cy + 2.5, width: 3, height: 2.5, fill: "#fff" }, g);
+          g.addEventListener("mousemove", () => tip(q[0] * Wm, q[1] * Hm, `<b>${e.n}</b> ${e.c !== "Normal" ? e.c.toLowerCase() + " " : ""}${e.lo}${e.hi !== e.lo ? "-" + e.hi : ""}<br>${e.note || ""}${e.mv ? ` (${e.mv.toLowerCase()})` : ""}`));
           g.addEventListener("mouseleave", hide);
         }
       }
@@ -307,10 +427,10 @@ async function mapTab(view) {
       const k = pts.length - 1 - rk, a = ACTS[p.st.act] || OTHER;
       const g = svg("g", {}, s);
       if (k === 0) svg("circle", { cx: p.q[0] * Wm, cy: p.q[1] * Hm, r: 12, fill: "none", stroke: a.color, "stroke-width": 2 }, g);
-      svg("circle", { cx: p.q[0] * Wm, cy: p.q[1] * Hm, r: 6, fill: a.color, stroke: "var(--surface)", "stroke-width": 2 }, g);
-      if (k < 12) { const t = svg("text", { x: p.q[0] * Wm + 10, y: p.q[1] * Hm - 8 }, g); t.textContent = String(k + 1); t.style.fill = "var(--ink-2)"; }
+      svg("circle", { cx: p.q[0] * Wm, cy: p.q[1] * Hm, r: 6, fill: a.color, stroke: "var(--raised)", "stroke-width": 2 }, g);
+      if (k < 12) { const t = svg("text", { x: p.q[0] * Wm + 10, y: p.q[1] * Hm - 8 }, g); t.textContent = String(k + 1); t.style.fill = "var(--graphite)"; }
       svg("circle", { cx: p.q[0] * Wm, cy: p.q[1] * Hm, r: 12, fill: "transparent" }, g);
-      g.addEventListener("mousemove", () => tip(p.q[0] * Wm, p.q[1] * Hm, `<b>${k + 1}. ${a.label}</b> ${stepText(p.st)}<br>step ${p.i}${p.st.q ? " · quest " + p.st.q : ""}`));
+      g.addEventListener("mousemove", () => tip(p.q[0] * Wm, p.q[1] * Hm, `<b>${k + 1}. ${a.label}</b> ${stepText(p.st)}<br>route step ${p.i}${p.st.q ? `, quest ${p.st.q}` : ""}`));
       g.addEventListener("mouseleave", hide);
     });
     const off = list.length - pts.length;
@@ -419,7 +539,7 @@ async function plannerTab(view) {
   const render = () => {
     listBox.replaceChildren();
     const sel = rows.filter(r => r.on);
-    listBox.append(h("p", { class: "sub" }, `${sel.length} of ${rows.length} steps selected · straight-line length in order: ${fmtNum(pathLength(sel, maps))} yd`));
+    listBox.append(h("p", { class: "sub" }, `${sel.length} of ${rows.length} steps selected. Straight-line length in this order: ${fmtNum(pathLength(sel, maps))} yards.`));
     listBox.append(h("table", { class: "steps" },
       h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "#"), h("th", {}, ""), h("th", {}, "Step"), h("th", {}, "Where"), h("th", {}, ""))),
       h("tbody", {}, rows.map((r, k) => {
@@ -498,7 +618,7 @@ async function profTab(view) {
           const n = m[0] * Math.max(Math.min(s[2], cap) - Math.max(s[1], p.rank), 0);
           if (n > 0) shopping[m[1]] = (shopping[m[1]] || 0) + n;
         }
-        const what = s.gather ? `Gather ${s.gather}${(faction === "Alliance" ? s.a : faction === "Horde" ? s.h : null) || s.both ? " · " + ((faction === "Alliance" ? s.a : faction === "Horde" ? s.h : null) || s.both) : ""}`
+        const what = s.gather ? `Gather ${s.gather}${(faction === "Alliance" ? s.a : faction === "Horde" ? s.h : null) || s.both ? ` in ${(faction === "Alliance" ? s.a : faction === "Horde" ? s.h : null) || s.both}` : ""}`
           : h("span", {}, `~${crafts} × `, ilink(idOf(s.item), s.item));
         return h("tr", { class: s[1] <= p.rank && p.rank < s[2] ? "sel" : "" }, h("td", { class: "num" }, `${s[1]}-${s[2]}`), h("td", {}, what),
           h("td", { class: "muted" }, (s.mats || []).map((m, k) => [k ? ", " : "", `${m[0]} `, ilink(idOf(m[1]), m[1])])));
@@ -553,7 +673,7 @@ async function refresh(first) {
   S.cache = {};
   const pick = document.getElementById("charPick");
   const chars = S.state.chars || [];
-  pick.replaceChildren(...chars.map(c => h("option", { value: c.key }, `${c.name} · ${c.realm}`)));
+  pick.replaceChildren(...chars.map(c => h("option", { value: c.key }, `${c.name} (${c.realm})`)));
   if (!S.charKey || !chars.some(c => c.key === S.charKey)) {
     const latest = chars.slice().sort((a, b) => b.saved - a.saved)[0];
     S.charKey = latest && latest.key;
@@ -574,23 +694,70 @@ async function poll() {
   setTimeout(poll, 3000);
 }
 
-function theme() {
-  const saved = (() => { try { return localStorage.getItem("theme"); } catch { return null; } })();
-  if (saved) document.documentElement.dataset.theme = saved;
-  document.getElementById("themeBtn").addEventListener("click", () => {
-    const dark = document.documentElement.dataset.theme
-      ? document.documentElement.dataset.theme === "dark"
-      : matchMedia("(prefers-color-scheme: dark)").matches;
-    const next = dark ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("theme", next); } catch { }
-    render();
+// ------------------------------------------------------------------ themes
+// The page wears any panefx theme (or follows the one panefx has applied).
+// Ground, ink and accent come from the theme; the hairlines and secondary text
+// are mixed from those two. Chart series do NOT come from the theme: they keep
+// the validated light or dark steps (by the theme's ground), so a theme can
+// never make two series indistinguishable.
+
+const SERIES = {
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300"],
+};
+const rgb = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const mix = (a, b, t) => { const x = rgb(a), y = rgb(b); return "#" + x.map((v, i) => Math.round(v * t + y[i] * (1 - t)).toString(16).padStart(2, "0")).join(""); };
+const lum = hex => { const [r, g, b] = rgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+
+function applyTheme(t) {
+  const c = t.colors, bg = c.background, fg = c.foreground;
+  const dark = lum(bg) < 0.4;
+  const root = document.documentElement.style;
+  const set = (k, v) => root.setProperty(k, v);
+  set("color-scheme", dark ? "dark" : "light");
+  set("--paper", bg); set("--ink", fg);
+  set("--accent", c.accent || fg);
+  set("--sage", c.color2 || mix(fg, bg, 0.5));
+  set("--graphite", mix(fg, bg, 0.62));
+  set("--line", mix(fg, bg, 0.2));
+  set("--wash", mix(fg, bg, 0.1));
+  set("--raised", mix(fg, bg, 0.04));
+  SERIES[dark ? "dark" : "light"].forEach((v, i) => set(`--s${i + 1}`, v));
+}
+
+async function themes() {
+  const pick = document.getElementById("themePick");
+  let data;
+  try { data = await api("/api/themes"); } catch { pick.hidden = true; return; }
+  const byId = Object.fromEntries(data.themes.map(t => [t.id, t]));
+  const group = (label, list) => list.length ? h("optgroup", { label }, list.map(t => h("option", { value: t.id }, t.name))) : null;
+  const follow = data.panefx && byId[data.panefx] ? h("option", { value: "panefx" }, `Follow panefx (${byId[data.panefx].name})`) : null;
+  pick.replaceChildren(...[
+    group("sl0p.leveler", data.themes.filter(t => t.source === "sl0p.leveler")),
+    follow,
+    group("Your panefx themes", data.themes.filter(t => t.source === "yours")),
+    group("panefx", data.themes.filter(t => t.source === "panefx")),
+  ].filter(Boolean));
+  let saved = null;
+  try { saved = localStorage.getItem("ledgerTheme"); } catch { }
+  const choose = id => {
+    const t = id === "panefx" ? byId[data.panefx] : byId[id];
+    if (!t) return false;
+    applyTheme(t);
+    pick.value = id;
+    return true;
+  };
+  const asked = new URLSearchParams(location.search).get("theme"); // ?theme=<id>: a link that shows a look
+  if (!choose(asked || saved || "survey-ledger")) choose("survey-ledger");
+  pick.addEventListener("change", () => {
+    choose(pick.value);
+    try { localStorage.setItem("ledgerTheme", pick.value); } catch { }
+    render(); // charts read the new series colours
   });
 }
 
 for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => go(b.dataset.tab));
 document.getElementById("charPick").addEventListener("change", async e => { S.charKey = e.target.value; S.cache = {}; await loadChar(); render(); });
-theme();
 S.tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : "overview";
-refresh(true).then(() => go(S.tab)).catch(e => { document.getElementById("view").append(h("div", { class: "note bad" }, "Cannot read the addon's data: " + e.message)); });
+themes().then(() => refresh(true)).then(() => go(S.tab)).catch(e => { document.getElementById("view").append(h("div", { class: "note bad" }, "Cannot read the addon's data: " + e.message)); });
 poll();

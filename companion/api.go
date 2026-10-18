@@ -360,6 +360,7 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/danger", s.literal("data/Danger.lua", "ns.DangerData ="))
 	mux.HandleFunc("/api/version", s.version)
 	mux.HandleFunc("/api/plan", s.plan)
+	mux.HandleFunc("/api/themes", s.themes)
 	mux.Handle("/", static)
 	return s.guard(mux)
 }

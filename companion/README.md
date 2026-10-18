@@ -44,6 +44,24 @@ Origin checks, plus a custom header on writes).
 | Planner | pick, reorder or shortest-order steps from any route or a recorded run, and send them to the addon |
 | Professions | your skills, the plan from your skill to 300, a shopping list to your current caps, trainers with `/way` lines |
 
+## Look
+
+The page is a field ledger: the BigBlueTerm437 font throughout, on its native
+16px pixel grid, ruled sections instead of cards, and survey orange kept for one
+thing only, the next stop. The hero is your XP bar drawn the game's way, with 20
+bubbles and rested XP hatched. Field notes are plain observations computed from
+your own data.
+
+**Themes:** the Theme menu has the two Survey ledger looks, all of panefx's
+themes, your own panefx themes (`%USERPROFILE%\.config\panefx\themes\`), and
+"Follow panefx", which uses whatever theme panefx has applied. A `?theme=<id>`
+link opens the page in that theme. Chart series always keep the validated
+light or dark colour steps, so no theme can make two series look alike.
+
+Credits: themes are listed in `themes/CREDITS.md`. The font is BigBlueTerm437
+Nerd Font Mono (VileR's BigBlue Terminal, patched by Nerd Fonts), CC BY-SA 4.0;
+its license is in `web/fonts/`.
+
 Zone bounds (for the map) and the character and profession snapshots come
 from `SlopLeveler/Export.lua`. Charts follow the validated palette from the
 dataviz method, in both light and dark modes, and each chart has a table view.
