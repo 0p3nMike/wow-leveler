@@ -104,6 +104,16 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
   `tools/plg_professions.lua`, run with luajit): step + materials vs bags, gathering zones per
   faction, train reminder + `/lev prof way`; in the profession window, the game's own orange /
   yellow recipes you can make now. Forever's new recipes are not in the 1-300 plan.
+- **Companion page** (`companion/`, Go, single .exe, `http://127.0.0.1:7830`): reads the
+  SavedVariables (`lua.go`, a values-only Lua reader), serves `/api/*` + an embedded page
+  (`web/`: overview, runs, map, planner, professions; SVG charts per the dataviz skill, palette
+  validated light+dark). Writes ONLY `routes/custom/Planner.lua`, generated as checked data
+  (`plan.go`). Host/Origin guard plus a custom header on POST. `Export.lua` (new) records map
+  bounds, a character snapshot and professions for it. Verified: `go test` (reader on the real
+  repo files, planner round-trip, written file loads in luajit); every tab screenshot-checked in
+  headless Chrome against harness data; API run against the real beta folder. Map conversion
+  world->map uses HereBeDragons' axis order (map x = world y): **confirm in game** that recorded
+  zone bounds put route dots where they belong.
 - **Need a full game restart** whenever a new file is added to the TOC (or Bindings.xml); /reload
   is enough for edits.
 - Michael plays an **Undead Mage**: `RXP Undead Mage` (questing) and `RXP Undead Mage AoE`

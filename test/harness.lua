@@ -896,6 +896,13 @@ fire("TRADE_SKILL_CLOSE")
 check(#ns.Prof.canSkill == 0, "cleared when the profession window closes")
 W.profs = {}
 
+-- export for the companion site: map bounds + character snapshot
+W.map, W.x, W.y = 1429, 0.3, 0.3
+fire("PLAYER_ENTERING_WORLD")
+local mb = SlopLevelerDB.maps and SlopLevelerDB.maps[1429]
+check(mb and mb.cont == 0 and mb.x0 == 0 and mb.x1 == 1000 and mb.y1 == 1000 and mb.name == "Map1429", "map bounds recorded for the site")
+check(SlopLevelerCharDB.char and SlopLevelerCharDB.char.level == W.level and SlopLevelerCharDB.char.class == "WARRIOR", "character snapshot")
+
 -- the solver is exact: compare with trying every order
 math.randomseed(7)
 for trial = 1, 5 do
@@ -954,6 +961,7 @@ if arg[2] then
   end
   local f = assert(io.open(arg[2], "w"))
   f:write("\nSlopLevelerDB = " .. ser(SlopLevelerDB, 0) .. "\n")
+  f:write("SlopLevelerCharDB = " .. ser(SlopLevelerCharDB, 0) .. "\n")
   f:close()
 end
 

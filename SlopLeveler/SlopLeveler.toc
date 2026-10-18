@@ -30,5 +30,7 @@ QuestLog.lua
 UI.lua
 Options.lua
 Commands.lua
+Export.lua
 routes\Example.lua
 routes\rxp\routes.xml
+routes\custom\Planner.lua

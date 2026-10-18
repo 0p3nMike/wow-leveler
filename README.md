@@ -24,6 +24,7 @@ your time goes.
 | **Professions** | Tells you what to craft or gather next, what materials that needs compared with your bags, and when to visit a trainer. In the profession window it lists the game's own skill-up recipes. |
 | **Measuring** | XP/hour, time to level, speedrun splits for each step against your best, and where your time goes (fighting, drinking, travelling). It can also record your runs and turn them into routes. |
 | **Buttons** | Two buttons you can bind to keys: use the step's quest item, and target the step's mob or NPC. |
+| **Companion page** | A local web page (`companion/`, a single Go .exe) with analytics graphs, a route map, a planner that sends routes back to the addon, and profession plans with Wowhead links. See [`companion/README.md`](companion/README.md). |
 
 It does not play the game for you. Movement, combat and targeting stay with you.
 Every automated action is something the default UI does from your own click.
@@ -66,6 +67,7 @@ Key Bindings → AddOns → sl0p.leveler has keys for the quest-item and target 
 | `tools/plg_professions.lua` | ProfessionLevelingGuide → `data/Professions.lua` (run with luajit) |
 | `tools/routes.py` | SavedVariables → run report and route file |
 | `test/harness.lua` | runs the real addon against a fake Forever API: `luajit test/harness.lua SlopLeveler` |
+| `companion/` | the local web page: `go build`, then run the .exe (see its README) |
 | `HANDOFF.md` | developer notes: what is verified and how |
 
 Every Blizzard API the addon calls was checked against Blizzard's own UI export
