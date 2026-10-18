@@ -15,7 +15,8 @@
 | what | status |
 |---|---|
 | every Blizzard API, event and template used exists in 1.60.1 (70450) | **verified** against Gethe/wow-ui-source branch `forever` (same build) |
-| addon logic: everything in the TOC (engine, optimizer, quest log, flights, danger, options, professions, ...) | **verified**: `luajit test\harness.lua SlopLeveler` 176/176 **on pHub** (luajit installed via scoop 2026-10-17, hash checked twice) |
+| addon logic: everything in the TOC (engine, optimizer, quest log, flights, danger, options, professions, gear export, ...) | **verified**: `luajit test\harness.lua SlopLeveler` 201/201 **on pHub** (luajit installed via scoop 2026-10-17, hash checked twice) |
+| gear export in game: tooltip lines (`C_TooltipInfo.GetHyperlink`), spec points, skills, quest rewards read before Assist accepts, merchant items | APIs **verified** in the 1.60.1 export; **confirm in game**: after a /reload the Gear tab shows your gear, and accepting a quest with reward choices fills "Quest rewards to pick" |
 | `tools/routes.py` report and route output | **verified** against `test/fixtures/SlopLeveler.lua` (WoW SavedVariables format) |
 | harness `arg[2]` SavedVariables dump -> `tools/routes.py` | **verified** on pHub |
 | the addon loading in the real game client | **verified by Michael** 2026-10-17 on a beta character (Undead Mage): loads, follows the route, guides to the next quest pickup |
@@ -114,6 +115,26 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
   headless Chrome against harness data; API run against the real beta folder. Map conversion
   world->map uses HereBeDragons' axis order (map x = world y): **confirm in game** that recorded
   zone bounds put route dots where they belong.
+- **Companion, 2026-10-17 additions** (all in existing files, so `/reload` is enough):
+  - `Export.lua` also saves `cdb.gear` (equipped by slot name, equippable bag items, spec points
+    per tree, skills, stats, gold), `cdb.questLog`, `cdb.turnedIn`, `cdb.money` (gold samples),
+    and account-wide `db.items` / `db.quests` (reward choices, read on QUEST_DETAIL and
+    QUEST_COMPLETE *before* Assist accepts: `ns.On(..., first)`) / `db.vendors` (MERCHANT_SHOW).
+  - **Gear tab** (`web/gear.js`): a drawn survey plate of the character (Wowhead's 3D model
+    viewer is not offered for embedding and refuses other origins: 403), best in slot per
+    class / level / spec from the items the game has shown you (no public item DB has Forever's
+    stats: Forever reworked items under their Classic IDs), quest reward picks, stat weights.
+    Weights: RestedXP `DB/forever/StatWeights.lua` (CC BY-NC-SA) -> `web/data/weights.json` via
+    `python -I tools/rxp_weights.py <RXPGuides>`; scored the way RXP's ItemUpgrades.lua does
+    (tooltip spell damage per school, weapon DPS + speed). Who wears what: RXP's CLASS_MAP.
+    A quest's reward choices count once (`assignBest`); a worn ring stays in its own slot.
+  - **Quests tab**: the log with objective progress, route turn-in step, the reward to pick, and
+    the quests the route skips. **Runs**: compare two runs (`multiLine`). **Map**: gear upgrade
+    layer (merchant spots, quest turn-ins). **Overview**: gold per hour, gold chart, gear notes.
+  - `go test` also runs `gear_test.mjs` in node (scoring against the real weights file).
+  - `autostart.ps1`: builds `sl0pleveler-watch.exe` and puts `-watch` in Startup; it opens the page
+    when `WowB.exe` (or whichever `Wow*.exe` the client folder has) starts. Addons cannot launch
+    programs, so this is the "launch with the game".
 - **Need a full game restart** whenever a new file is added to the TOC (or Bindings.xml); /reload
   is enough for edits.
 - Michael plays an **Undead Mage**: `RXP Undead Mage` (questing) and `RXP Undead Mage AoE`

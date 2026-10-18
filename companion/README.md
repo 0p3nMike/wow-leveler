@@ -17,6 +17,21 @@ Flags:
 - `-client _classic_beta_`: pick a client folder. By default it uses the one that has the addon installed.
 - `-addr 127.0.0.1:7830`: listen address. Keep it on 127.0.0.1.
 - `-open=false`: don't open a browser.
+- `-watch`: stay in the background and open the page each time the game starts.
+
+### Open it with the game
+
+Addons can't start programs (WoW's addon sandbox has no way to), so the
+companion watches for the game instead:
+
+```powershell
+.\autostart.ps1          # builds sl0pleveler-watch.exe (no console window), adds it to Startup, starts it
+.\autostart.ps1 -Remove  # stops it and takes it out of Startup
+```
+
+The watcher finds the client's game exe in its folder (`WowB.exe` for the
+Forever beta) and opens the page whenever it starts. Running the normal exe
+while the watcher is up just opens the page instead of starting a second server.
 
 ## How the data gets there
 
@@ -38,9 +53,11 @@ Origin checks, plus a custom header on writes).
 
 | tab | shows |
 |---|---|
-| Overview | XP/hour this session, level, route and step, splits vs best, measured speeds, where the time went by zone, time per step |
-| Runs | for each recorded run (`/lev rec start`): XP over active time, time per level, time by activity, every quest with a Wowhead link |
-| Map | the route ahead in the order the addon will do it, your recorded path, danger spots and patrols, on a plain grid for each zone (Blizzard's map art is theirs) |
+| Overview | XP/hour this session, level, route and step, gold per hour, field notes (upgrades waiting, repairs, quests off the route), splits vs best, measured speeds, where the time went by zone, time per step, gold over time |
+| Gear | a drawing of your character with every slot, best in slot for any class / level / spec, which quest reward to pick, upgrades in your bags, durability, the stat weights used |
+| Quests | your quest log with objective progress, where the route turns each one in, the reward to pick, and the quests the route skips |
+| Runs | for each recorded run (`/lev rec start`): XP over active time, time per level, time by activity, every quest with a Wowhead link; compare any two runs |
+| Map | the route ahead in the order the addon will do it, your recorded path, danger spots and patrols, where known gear upgrades are, on a plain grid for each zone (Blizzard's map art is theirs) |
 | Planner | pick, reorder or shortest-order steps from any route or a recorded run, and send them to the addon |
 | Professions | your skills, the plan from your skill to 300, a shopping list to your current caps, trainers with `/way` lines |
 
@@ -62,8 +79,24 @@ Credits: themes are listed in `themes/CREDITS.md`. The font is BigBlueTerm437
 Nerd Font Mono (VileR's BigBlue Terminal, patched by Nerd Fonts), CC BY-SA 4.0;
 its license is in `web/fonts/`.
 
-Zone bounds (for the map) and the character and profession snapshots come
-from `SlopLeveler/Export.lua`. Charts follow the validated palette from the
+## Gear: where the numbers come from
+
+- **Items:** only what your own game reports. Forever reworked many Classic
+  items under their old IDs, so no public item database has its stats. The
+  addon saves your equipment and bags, and remembers every quest reward a
+  quest giver shows you and every item a merchant you open sells. "Best in
+  slot" is the best of those, and it grows as you play.
+- **Stat weights:** RestedXP's Forever leveling weights (CC BY-NC-SA 4.0), per
+  class, spec, level bracket and Speedrun or Hardcore. Regenerate with
+  `python -I tools/rxp_weights.py <RXPGuides checkout>`. Items are scored the
+  way RestedXP's ItemUpgrades does: spell damage per school read from the
+  tooltip, weapons by DPS and speed.
+- **The character drawing** is our own. Wowhead's 3D model viewer is not
+  offered for use on other sites and refuses requests from them.
+- The addon never picks a quest reward for you; the page says which to click.
+
+Zone bounds (for the map) and the character, gear, quest log and profession
+snapshots come from `SlopLeveler/Export.lua`. Charts follow the validated palette from the
 dataviz method, in both light and dark modes, and each chart has a table view.
 
 ## Tests

@@ -123,6 +123,62 @@ export function lineChart(host, { points, xFmt = fmtTime, yFmt = fmtNum, xLabel 
     points.map(p => [xFmt(p.x), yFmt(p.y), p.label || ""]));
 }
 
+// A few series over one x (seconds), one y axis: comparing runs. Legend above,
+// each line labelled at its end, crosshair reads every series at that x, and
+// a table view. series = [{ name, points: [{x, y}], color }] (2-4 series).
+export function multiLine(host, { series, xFmt = fmtTime, yFmt = fmtNum, xLabel = "", yLabel = "", height = 260 }) {
+  host.classList.add("chart");
+  const W = widthOf(host);
+  const all = series.flatMap(s => s.points);
+  if (!all.length) { host.append(h("div", { class: "empty" }, "No data yet.")); return; }
+  host.append(h("div", { class: "legend" }, series.map(se => h("span", {}, h("i", { class: "line", style: `background:${se.color}` }), se.name))));
+  const H = height, iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b;
+  const xmax = Math.max(...all.map(p => p.x)) || 1, yt = ticks(Math.max(...all.map(p => p.y)));
+  const ymax = yt[yt.length - 1];
+  const X = x => PAD.l + (x / xmax) * iw, Y = y => PAD.t + ih - (y / ymax) * ih;
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${yLabel}: ${series.map(x => x.name).join(" and ")}` });
+  for (const v of yt) {
+    svg("line", { class: v === 0 ? "baseline" : "gridline", x1: PAD.l, x2: W - PAD.r, y1: Y(v), y2: Y(v) }, s);
+    svg("text", { x: PAD.l - 10, y: Y(v) + 5, "text-anchor": "end" }, s).textContent = yFmt(v);
+  }
+  for (const v of ticks(xmax, 3)) if (v <= xmax) svg("text", { x: X(v), y: H - 10, "text-anchor": "middle" }, s).textContent = xFmt(v);
+  const ends = [];
+  for (const se of series) {
+    if (!se.points.length) continue;
+    const d = se.points.map((p, i) => `${i ? "L" : "M"}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join("");
+    svg("path", { d, fill: "none", stroke: se.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, s);
+    const last = se.points[se.points.length - 1];
+    svg("circle", { cx: X(last.x), cy: Y(last.y), r: 4, fill: se.color, stroke: "var(--raised)", "stroke-width": 2 }, s);
+    ends.push({ se, x: X(last.x), y: Y(last.y) });
+  }
+  // direct labels at the line ends, nudged apart so they never overlap
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 20) ends[i].y = ends[i - 1].y + 20;
+  for (const e of ends) {
+    const t = svg("text", { x: e.x - 8, y: e.y - 10, "text-anchor": "end" }, s);
+    t.textContent = e.se.name;
+    t.style.fill = "var(--ink)";
+  }
+  const cross = svg("line", { y1: PAD.t, y2: PAD.t + ih, stroke: "var(--graphite)", "stroke-width": 1, visibility: "hidden" }, s);
+  const hit = svg("rect", { x: PAD.l, y: PAD.t, width: iw, height: ih, fill: "transparent" }, s);
+  host.append(s);
+  const tip = tipFor(host);
+  // the value of a series at x: its last point at or before x
+  const at = (pts, x) => { let v = null; for (const p of pts) { if (p.x <= x) v = p.y; else break; } return v; };
+  hit.addEventListener("mousemove", ev => {
+    const r = s.getBoundingClientRect(), sx = (ev.clientX - r.left) * (W / r.width);
+    const x = Math.max(0, Math.min(xmax, ((sx - PAD.l) / iw) * xmax));
+    cross.setAttribute("x1", X(x)); cross.setAttribute("x2", X(x)); cross.setAttribute("visibility", "visible");
+    const rows = series.map(se => { const v = at(se.points, x); return `${se.name}: <b>${v == null ? "--" : yFmt(v)}</b>`; }).join("<br>");
+    tip.show(X(x) * r.width / W, (PAD.t + 20) * r.height / H, `${xFmt(x)}<br>${rows}`);
+  });
+  hit.addEventListener("mouseleave", () => { tip.hide(); cross.setAttribute("visibility", "hidden"); });
+  const xs = [...new Set(all.map(p => p.x))].sort((a, b) => a - b);
+  const step = Math.max(1, Math.ceil(xs.length / 40)); // a readable table, not every sample
+  tableToggle(host, [{ label: xLabel || "x" }, ...series.map(se => ({ label: se.name, num: true }))],
+    xs.filter((_, i) => i % step === 0 || i === xs.length - 1).map(x => [xFmt(x), ...series.map(se => { const v = at(se.points, x); return v == null ? "--" : yFmt(v); })]));
+}
+
 // Single series columns: time per level, time per step.
 export function columnChart(host, { bars, yFmt = fmtNum, yLabel = "", height = 220, color = "var(--s1)", labelEvery = 1 }) {
   host.classList.add("chart");

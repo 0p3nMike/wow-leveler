@@ -276,6 +276,38 @@ func (s *Server) maps(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out, nil)
 }
 
+// byKey: a Lua table keyed by number, whether it came back as a map or (when
+// its keys happened to be 1..n) as a list.
+func byKey(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	out := map[string]any{}
+	for i, x := range list(v) {
+		out[strconv.Itoa(i+1)] = x
+	}
+	return out
+}
+
+// /api/items: the items the game has shown (quest rewards, merchants), from
+// every account: { items: {id: item}, quests: {id: rewards}, vendors: {id: [seller]} }.
+func (s *Server) items(w http.ResponseWriter, r *http.Request) {
+	accts, _ := s.paths.Scan()
+	out := map[string]map[string]any{"items": {}, "quests": {}, "vendors": {}}
+	for a := range accts {
+		db, err := s.accountDB(a)
+		if err != nil {
+			continue
+		}
+		for key, dst := range out {
+			for k, v := range byKey(db[key]) {
+				dst[k] = v
+			}
+		}
+	}
+	writeJSON(w, out, nil)
+}
+
 func (s *Server) literal(rel, marker string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		f := filepath.Join(s.paths.AddonDir(), rel)
@@ -356,11 +388,18 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/routes", s.routes)
 	mux.HandleFunc("/api/route", s.route)
 	mux.HandleFunc("/api/maps", s.maps)
+	mux.HandleFunc("/api/items", s.items)
 	mux.HandleFunc("/api/prof", s.literal("data/Professions.lua", "ns.ProfData ="))
 	mux.HandleFunc("/api/danger", s.literal("data/Danger.lua", "ns.DangerData ="))
 	mux.HandleFunc("/api/version", s.version)
 	mux.HandleFunc("/api/plan", s.plan)
 	mux.HandleFunc("/api/themes", s.themes)
-	mux.Handle("/", static)
+	// The page's files are embedded (no modification time to revalidate
+	// against), so tell the browser not to reuse them: an updated companion
+	// must never run with last version's CSS or scripts.
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		static.ServeHTTP(w, r)
+	}))
 	return s.guard(mux)
 }

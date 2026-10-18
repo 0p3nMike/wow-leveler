@@ -26,14 +26,16 @@ local function dispatch(event, ...)
   end
 end
 
-function ns.On(event, fn)
+-- first: run before the handlers already there (Export reads a quest's
+-- rewards before Assist accepts it and the frame closes).
+function ns.On(event, fn, first)
   if not handlers[event] then
     handlers[event] = {}
     if not event:match("^SL_") then
       pcall(frame.RegisterEvent, frame, event) -- an event this client lacks is skipped, not fatal
     end
   end
-  table.insert(handlers[event], fn)
+  if first then table.insert(handlers[event], 1, fn) else table.insert(handlers[event], fn) end
 end
 
 ns.Fire = dispatch

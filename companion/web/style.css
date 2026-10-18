@@ -128,6 +128,7 @@ h3 { font: inherit; color: var(--graphite); margin: 16px 0 8px; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0 0 8px; color: var(--graphite); }
 .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
 .legend i.line { height: 2px; width: 16px; vertical-align: 4px; }
+.legend i.diamond { width: 10px; height: 10px; background: var(--sage); transform: rotate(45deg); margin: 0 8px 0 2px; }
 .tablebtn { margin-top: 8px; border: 0; background: none; color: var(--graphite); cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
 
 table { border-collapse: collapse; width: 100%; }
@@ -144,7 +145,42 @@ tr.off td { color: var(--graphite); text-decoration: line-through; text-decorati
 .row { display: flex; gap: 12px 20px; align-items: baseline; flex-wrap: wrap; margin-bottom: 16px; }
 
 .meter { height: 8px; background: var(--wash); }
+.obj .meter { height: 4px; margin: 2px 0 6px; max-width: 240px; }
+tr.zone td { color: var(--graphite); padding-top: 16px; border-bottom: 1px dotted var(--graphite); }
 .meter > div { height: 100%; background: var(--ink); }
+
+/* ---- the Gear plate: a survey drawing of the character, slots on leaders.
+   The game's item quality colours, darkened for the light ground (app.js
+   swaps in the game's own on dark themes). */
+:root { --q0: #7d7d7d; --q1: var(--ink); --q2: #1e8a00; --q3: #0062c4; --q4: #8a2be2; --q5: #c45f00; }
+.plate { max-width: 880px; }
+.doll { display: grid; grid-template-columns: minmax(0, 1fr) 200px minmax(0, 1fr); gap: 0 12px; align-items: start; }
+.col { display: grid; grid-auto-rows: 48px; min-width: 0; }
+.slot { min-width: 0; }
+.slotname { color: var(--graphite); display: flex; gap: 12px; }
+.doll .col:first-child .slot { text-align: right; }
+.doll .col:first-child .slotname { flex-direction: row-reverse; justify-content: flex-start; }
+.slotitem { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up { color: var(--sage); white-space: nowrap; }
+.bistable td:first-child { white-space: nowrap; }
+.bistable td { width: 30%; }
+.bistable td:first-child { width: 10%; }
+.bis .score { color: var(--graphite); margin-left: 8px; }
+.figure { display: block; }
+.figure .body circle, .figure .body path { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.figure .body path:nth-child(3) { fill: var(--wash); }
+.figure .leaders path { fill: none; stroke: var(--graphite); stroke-width: 1; stroke-dasharray: 2 3; }
+.figure .pin { stroke: var(--paper); stroke-width: 2; fill: var(--q1); }
+.figure .pin.empty { fill: var(--paper); stroke: var(--graphite); stroke-width: 1.5; }
+.weapons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 24px; margin-top: 16px; padding-top: 8px; border-top: 1px dotted var(--line); max-width: 880px; }
+.weapons .slot { height: 48px; }
+.item { white-space: nowrap; }
+.chip { display: inline-block; width: 10px; height: 10px; margin-right: 8px; background: var(--q1); }
+.chip.q0, .figure .pin.q0 { background: var(--q0); fill: var(--q0); }
+.chip.q2, .figure .pin.q2 { background: var(--q2); fill: var(--q2); }
+.chip.q3, .figure .pin.q3 { background: var(--q3); fill: var(--q3); }
+.chip.q4, .figure .pin.q4 { background: var(--q4); fill: var(--q4); }
+.chip.q5, .figure .pin.q5 { background: var(--q5); fill: var(--q5); }
 
 /* the map sheet: a survey grid with coordinates */
 .map svg { background: var(--raised); border: 1px solid var(--ink); }
@@ -154,6 +190,17 @@ tr.off td { color: var(--graphite); text-decoration: line-through; text-decorati
   .top, main, .foot { padding-left: 16px; padding-right: 16px; }
   .lvl { font-size: 32px; line-height: 32px; }
   .eta { font-size: 16px; line-height: 24px; }
-  .grid, .grid.prof { grid-template-columns: 1fr; }
+  .grid, .grid.prof { grid-template-columns: minmax(0, 1fr); }
   .who { margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .item, .slotitem { white-space: normal; }
+  .card table { display: block; overflow-x: auto; }
+  .facts { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
+  .facts dd { overflow-wrap: anywhere; }
+  .doll { grid-template-columns: minmax(0, 1fr); }
+  .figure { display: none; }
+  .doll .col:first-child .slot { text-align: left; }
+  .doll .col:first-child .slotname { flex-direction: row; }
+  .weapons { grid-template-columns: minmax(0, 1fr); }
 }

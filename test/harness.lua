@@ -156,7 +156,7 @@ C_QuestLog = {
   IsQuestFlaggedCompleted = function(q) return W.turnedIn[q] == true end,
   GetTitleForQuestID = function(q) return W.log[q] and W.log[q].title or nil end,
   GetNumQuestLogEntries = function() return #logList() end,
-  GetInfo = function(i) local q = logList()[i]; return q and { questID = q, isHeader = false } end,
+  GetInfo = function(i) local q = logList()[i]; return q and { questID = q, isHeader = false, title = W.log[q].title, level = 5 } end,
   GetQuestObjectives = function(q) return W.log[q] and W.log[q].objs or {} end,
   GetQuestsOnMap = function(map) return (W.poi or {})[map] or {} end,
   GetNextWaypoint = function(q) local w = (W.wp or {})[q]; if w then return w[1], w[2], w[3] end end,
@@ -902,6 +902,116 @@ fire("PLAYER_ENTERING_WORLD")
 local mb = SlopLevelerDB.maps and SlopLevelerDB.maps[1429]
 check(mb and mb.cont == 0 and mb.x0 == 0 and mb.x1 == 1000 and mb.y1 == 1000 and mb.name == "Map1429", "map bounds recorded for the site")
 check(SlopLevelerCharDB.char and SlopLevelerCharDB.char.level == W.level and SlopLevelerCharDB.char.class == "WARRIOR", "character snapshot")
+
+-- gear for the site's Gear tab: equipped, equippable bag items, spec, skills, stats, gold
+do
+  local items = {
+    [2] = { "Worn Shortsword", 1, 2, 1, "Weapon", "One-Handed Swords", "INVTYPE_WEAPONMAINHAND", { ITEM_MOD_STRENGTH_SHORT = 1 } },
+    [6] = { "Recruit's Pants", 1, 1, 1, "Armor", "Cloth", "INVTYPE_LEGS", {} },
+    [8] = { "Brittle Bow", 0, 1, 1, "Weapon", "Bows", "INVTYPE_RANGED", {} },
+    [9] = { "Ring of Secrets", 2, 10, 5, "Armor", "Miscellaneous", "INVTYPE_FINGER", { ITEM_MOD_STAMINA_SHORT = W.secretStat } },
+  }
+  local function id(link) return tonumber(tostring(link):match("item:(%d+)")) end
+  C_Item.GetItemInfo = function(link)
+    local n = id(link)
+    local it = n and items[n]
+    if not it then local k = tonumber(tostring(link):match("%d+")); return link, nil, nil, nil, nil, nil, nil, nil, nil, nil, (k or 0) * 10 end
+    return it[1], link, it[2], it[3], it[4], it[5], it[6], 1, it[7], 1000 + n, n * 7, it[5] == "Weapon" and 2 or 4, n == 2 and 7 or 1, 2
+  end
+  C_Item.GetItemInfoInstant = function(link) return id(link) end
+  C_Item.GetItemStats = function(link) local it = items[id(link)]; return it and it[8] end
+  C_Item.IsEquippableItem = function(link) return items[id(link)] ~= nil end
+  C_TooltipInfo = { GetHyperlink = function(link)
+    if id(link) ~= 2 then return { lines = {} } end
+    return { lines = { { leftText = "Worn Shortsword" }, { leftText = "1 - 3 Damage", rightText = "Speed 1.90" }, { leftText = "(1.1 damage per second)" } } }
+  end }
+  local worn = { [16] = "|Hitem:2::|h", [7] = "|Hitem:6::|h" }
+  local slotIDs = { HeadSlot = 1, LegsSlot = 7, MainHandSlot = 16 }
+  C_PaperDollInfo = { GetInventorySlotInfo = function(name) return slotIDs[name] or 99, 0, false end }
+  function GetInventoryItemLink(_, slot) return worn[slot] end
+  function GetInventoryItemDurability(slot) if worn[slot] then return 30, 35 end end
+  W.bags[1] = { { hyperlink = "|Hitem:8::|h" }, { hyperlink = "|Hitem:77::|h" }, { hyperlink = "|Hitem:9::|h" } }
+  function UnitStat(_, i) return 20 + i, 20 + i end
+  function GetSpellBonusDamage(school) return school == 3 and 12 or 0 end
+  function GetAverageItemLevel() return 3, 2.5 end
+  W.money = 1234
+  function GetMoney() return W.money end
+  C_SpecializationInfo = {
+    GetSpecialization = function() return 2 end,
+    GetNumSpecializationsForClassID = function() return 3 end,
+    GetSpecializationInfo = function(i) return 70 + i, ({ "Arms", "Fury", "Protection" })[i], "", 1, "DAMAGER", 1, i == 2 and 5 or 0 end,
+  }
+  local lines = { { isHeader = true, name = "Weapon Skills" }, { name = "Swords", rank = 5, maxRank = 25 }, { isHeader = true, name = "Armor Proficiencies" }, { name = "Cloth", rank = 1, maxRank = 1 } }
+  C_SkillInfo = { GetNumSkillLines = function() return #lines end, GetSkillLineInfo = function(i) return lines[i] end }
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  local g = SlopLevelerCharDB.gear
+  local mh = g and g.slots.MainHand
+  check(mh and mh.name == "Worn Shortsword" and mh.stats.ITEM_MOD_STRENGTH_SHORT == 1 and mh.dur == 30, "equipped item with stats and durability, by slot name")
+  check(mh and mh.cid == 2 and mh.sc == 7 and mh.bind == 2, "item class, subclass and binding saved")
+  check(mh and #mh.tip == 2 and mh.tip[1] == "1 - 3 Damage|Speed 1.90", "tooltip lines with numbers kept, left|right")
+  check(g and g.slots.Legs and g.slots.Legs.sub == "Cloth" and g.slots.Legs.loc == "INVTYPE_LEGS" and not g.slots.Head, "legs saved, empty slots left out")
+  check(g and #g.bags == 2 and g.bags[1].id == 8, "only equippable bag items saved")
+  W.secretStat = nil
+  check(g and g.spec.cur == 2 and g.spec.trees[2].name == "Fury" and g.spec.trees[2].points == 5, "spec and points per tree")
+  check(g and g.skills[1].name == "Swords" and g.skills[1].head == "Weapon Skills" and g.skills[2].head == "Armor Proficiencies", "skills keep their header")
+  check(g and g.stats.sta == 23 and g.stats.spell == 12 and g.ilvl == 2.5 and g.money == 1234, "stats, spell power, item level, gold")
+  W.secret = true
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  W.secret = false
+  check(SlopLevelerCharDB.gear.stats.sta == nil and SlopLevelerCharDB.gear.money == nil, "secret values are never saved")
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  fire("PLAYER_MONEY")
+  local t0 = W.t
+  W.money = 2000; fire("PLAYER_MONEY")
+  check(#SlopLevelerCharDB.money == 1 and SlopLevelerCharDB.money[1][2] == 2000, "gold changes within 2 min update one sample")
+  W.t = W.t + 300; W.money = 2500; fire("PLAYER_MONEY")
+  check(#SlopLevelerCharDB.money == 2 and SlopLevelerCharDB.money[2][1] == t0 + 300, "a later change adds a sample")
+
+  -- the item catalogue: quest rewards at the NPC, read before Assist accepts
+  local oldLink = GetQuestItemLink
+  local seenAtAccept
+  GetQuestItemLink = function(kind, i)
+    if W.qf.closed then return nil end
+    if kind == "choice" then return ({ "|Hitem:8::|h", "|Hitem:9::|h", "|Hitem:77::|h" })[i] end
+    if kind == "reward" then return "|Hitem:6::|h" end
+  end
+  function GetNumQuestRewards() return 1 end
+  function GetTitleText() return "Wanted: Bones" end
+  local oldAccept = AcceptQuest
+  AcceptQuest = function() seenAtAccept = SlopLevelerDB.quests and SlopLevelerDB.quests[555]; W.qf.closed = true; called("AcceptQuest", W.qf.id) end
+  W.qf.id, W.qf.choices = 555, 3
+  ns.Route.Register({ name = "reward test", steps = { { act = "accept", q = 555 } } })
+  lev("route use reward test")
+  fire("QUEST_DETAIL")
+  local qr = SlopLevelerDB.quests and SlopLevelerDB.quests[555]
+  check(qr and #qr.choice == 2 and qr.choice[1] == 8 and qr.choice[2] == 9 and qr.reward[1] == 6, "quest rewards recorded, equippable only")
+  check(seenAtAccept ~= nil, "rewards are read before Assist accepts the quest")
+  check(SlopLevelerDB.items[9] and SlopLevelerDB.items[9].name == "Ring of Secrets" and SlopLevelerDB.items[9].req == 5, "reward items kept in the catalogue")
+  GetQuestItemLink, AcceptQuest, W.qf.closed, W.qf.choices, W.qf.id = oldLink, oldAccept, nil, 0, nil
+  -- the quest log, with objectives
+  W.log[701] = { title = "Wolves", complete = false, objs = { { text = "Wolf killed: 3/8", numFulfilled = 3, numRequired = 8, finished = false } } }
+  W.log[702] = { title = "Mail", complete = true, objs = {} }
+  fire("QUEST_LOG_UPDATE")
+  local ql = SlopLevelerCharDB.questLog or {}
+  local byQ = {}
+  for _, e in ipairs(ql) do byQ[e.q] = e end
+  check(byQ[701] and byQ[701].title == "Wolves" and byQ[701].objs[1].have == 3 and byQ[701].objs[1].need == 8 and not byQ[701].done, "quest log saved with objective progress")
+  check(byQ[702] and byQ[702].done == true, "finished quests marked done")
+  W.log[701], W.log[702] = nil, nil
+  fire("QUEST_TURNED_IN", 555, 100, 0)
+  check(SlopLevelerCharDB.turnedIn and SlopLevelerCharDB.turnedIn[555] == W.t, "turned-in quests remembered per character")
+
+  -- merchants
+  function GetMerchantNumItems() return 2 end
+  function GetMerchantItemLink(i) return ({ "|Hitem:6::|h", "|Hitem:77::|h" })[i] end
+  C_MerchantFrame = { GetItemInfo = function(i) return { price = 100 * i } end }
+  function UnitName(u) return u == "npc" and "Vendor Vic" or "Tester" end
+  fire("MERCHANT_SHOW"); fire("MERCHANT_SHOW")
+  local v = SlopLevelerDB.vendors and SlopLevelerDB.vendors[6]
+  check(v and #v == 1 and v[1].npc == "Vendor Vic" and v[1].price == 100 and v[1].map == W.map, "merchant items with seller, place and price, once per seller")
+  check(SlopLevelerDB.vendors[77] == nil, "items you cannot equip are not kept")
+  function UnitName() return "Tester" end
+end
 
 -- the solver is exact: compare with trying every order
 math.randomseed(7)
