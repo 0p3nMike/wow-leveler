@@ -190,6 +190,7 @@ local lf = assert(io.open(lootOut, "wb"))
 lf:write('{"_source":"AllTheThings (MIT, https://github.com/ATTWoWAddon/AllTheThings) commit ' .. commit ..
   ', db/Camelot: items by the creatures that drop them (crs), turned round. No drop rates: ATT has none.","loot":{')
 for k, id in ipairs(npcs) do
+  table.sort(LOOT[id]) -- the files are read in no fixed order: sorted, the output is the same every run
   lf:write((k > 1 and "," or "") .. '"' .. id .. '":[' .. table.concat(LOOT[id], ",") .. "]")
 end
 lf:write("}}\n")

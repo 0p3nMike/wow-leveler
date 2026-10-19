@@ -27,7 +27,7 @@ $s = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
 $s.TargetPath = $exe
 $s.Arguments = '-watch'
 $s.WorkingDirectory = $PSScriptRoot
-$s.Description = 'Opens the zugzugleveler page when WoW starts'
+$s.Description = 'Opens the zugzug_leveler page when WoW starts'
 $s.Save()
 
 Start-Process $exe -ArgumentList '-watch' -WorkingDirectory $PSScriptRoot

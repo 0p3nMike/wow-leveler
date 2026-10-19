@@ -1,0 +1,283 @@
+{
+ "_note": "Every route tools/refresh.py regenerates. The AoE path is from HANDOFF.md (Undead Mage AoE).",
+ "routes": [
+  {
+   "name": "RXP Dwarf Hunter",
+   "race": "Dwarf",
+   "class": "Hunter"
+  },
+  {
+   "name": "RXP Dwarf Paladin",
+   "race": "Dwarf",
+   "class": "Paladin"
+  },
+  {
+   "name": "RXP Dwarf Priest",
+   "race": "Dwarf",
+   "class": "Priest"
+  },
+  {
+   "name": "RXP Dwarf Rogue",
+   "race": "Dwarf",
+   "class": "Rogue"
+  },
+  {
+   "name": "RXP Dwarf Warrior",
+   "race": "Dwarf",
+   "class": "Warrior"
+  },
+  {
+   "name": "RXP Gnome Mage",
+   "race": "Gnome",
+   "class": "Mage"
+  },
+  {
+   "name": "RXP Gnome Rogue",
+   "race": "Gnome",
+   "class": "Rogue"
+  },
+  {
+   "name": "RXP Gnome Warlock",
+   "race": "Gnome",
+   "class": "Warlock"
+  },
+  {
+   "name": "RXP Gnome Warrior",
+   "race": "Gnome",
+   "class": "Warrior"
+  },
+  {
+   "name": "RXP Human Mage",
+   "race": "Human",
+   "class": "Mage"
+  },
+  {
+   "name": "RXP Human Paladin",
+   "race": "Human",
+   "class": "Paladin"
+  },
+  {
+   "name": "RXP Human Priest",
+   "race": "Human",
+   "class": "Priest"
+  },
+  {
+   "name": "RXP Human Rogue",
+   "race": "Human",
+   "class": "Rogue"
+  },
+  {
+   "name": "RXP Human Warlock",
+   "race": "Human",
+   "class": "Warlock"
+  },
+  {
+   "name": "RXP Human Warrior",
+   "race": "Human",
+   "class": "Warrior"
+  },
+  {
+   "name": "RXP NightElf Druid",
+   "race": "NightElf",
+   "class": "Druid"
+  },
+  {
+   "name": "RXP NightElf Hunter",
+   "race": "NightElf",
+   "class": "Hunter"
+  },
+  {
+   "name": "RXP NightElf Priest",
+   "race": "NightElf",
+   "class": "Priest"
+  },
+  {
+   "name": "RXP NightElf Rogue",
+   "race": "NightElf",
+   "class": "Rogue"
+  },
+  {
+   "name": "RXP NightElf Warrior",
+   "race": "NightElf",
+   "class": "Warrior"
+  },
+  {
+   "name": "RXP Orc Hunter",
+   "race": "Orc",
+   "class": "Hunter"
+  },
+  {
+   "name": "RXP Orc Rogue",
+   "race": "Orc",
+   "class": "Rogue"
+  },
+  {
+   "name": "RXP Orc Shaman",
+   "race": "Orc",
+   "class": "Shaman"
+  },
+  {
+   "name": "RXP Orc Warlock",
+   "race": "Orc",
+   "class": "Warlock"
+  },
+  {
+   "name": "RXP Orc Warrior",
+   "race": "Orc",
+   "class": "Warrior"
+  },
+  {
+   "name": "RXP Skyborne Druid Alliance",
+   "race": "Skyborne",
+   "class": "Druid",
+   "faction": "Alliance"
+  },
+  {
+   "name": "RXP Skyborne Druid Horde",
+   "race": "Skyborne",
+   "class": "Druid",
+   "faction": "Horde"
+  },
+  {
+   "name": "RXP Skyborne Hunter Alliance",
+   "race": "Skyborne",
+   "class": "Hunter",
+   "faction": "Alliance"
+  },
+  {
+   "name": "RXP Skyborne Hunter Horde",
+   "race": "Skyborne",
+   "class": "Hunter",
+   "faction": "Horde"
+  },
+  {
+   "name": "RXP Skyborne Mage Alliance",
+   "race": "Skyborne",
+   "class": "Mage",
+   "faction": "Alliance"
+  },
+  {
+   "name": "RXP Skyborne Mage Horde",
+   "race": "Skyborne",
+   "class": "Mage",
+   "faction": "Horde"
+  },
+  {
+   "name": "RXP Skyborne Rogue Alliance",
+   "race": "Skyborne",
+   "class": "Rogue",
+   "faction": "Alliance"
+  },
+  {
+   "name": "RXP Skyborne Rogue Horde",
+   "race": "Skyborne",
+   "class": "Rogue",
+   "faction": "Horde"
+  },
+  {
+   "name": "RXP Skyborne Shaman Alliance",
+   "race": "Skyborne",
+   "class": "Shaman",
+   "faction": "Alliance"
+  },
+  {
+   "name": "RXP Skyborne Shaman Horde",
+   "race": "Skyborne",
+   "class": "Shaman",
+   "faction": "Horde"
+  },
+  {
+   "name": "RXP Skyborne Warrior Alliance",
+   "race": "Skyborne",
+   "class": "Warrior",
+   "faction": "Alliance"
+  },
+  {
+   "name": "RXP Skyborne Warrior Horde",
+   "race": "Skyborne",
+   "class": "Warrior",
+   "faction": "Horde"
+  },
+  {
+   "name": "RXP Tauren Druid",
+   "race": "Tauren",
+   "class": "Druid"
+  },
+  {
+   "name": "RXP Tauren Hunter",
+   "race": "Tauren",
+   "class": "Hunter"
+  },
+  {
+   "name": "RXP Tauren Shaman",
+   "race": "Tauren",
+   "class": "Shaman"
+  },
+  {
+   "name": "RXP Tauren Warrior",
+   "race": "Tauren",
+   "class": "Warrior"
+  },
+  {
+   "name": "RXP Troll Hunter",
+   "race": "Troll",
+   "class": "Hunter"
+  },
+  {
+   "name": "RXP Troll Mage",
+   "race": "Troll",
+   "class": "Mage"
+  },
+  {
+   "name": "RXP Troll Priest",
+   "race": "Troll",
+   "class": "Priest"
+  },
+  {
+   "name": "RXP Troll Rogue",
+   "race": "Troll",
+   "class": "Rogue"
+  },
+  {
+   "name": "RXP Troll Shaman",
+   "race": "Troll",
+   "class": "Shaman"
+  },
+  {
+   "name": "RXP Troll Warrior",
+   "race": "Troll",
+   "class": "Warrior"
+  },
+  {
+   "name": "RXP Undead Mage",
+   "race": "Undead",
+   "class": "Mage"
+  },
+  {
+   "name": "RXP Undead Mage AoE",
+   "race": "Undead",
+   "class": "Mage",
+   "path": "1-6 Tirisfal Glades;6-12 Tirisfal Glades;12-14 Silverpine Forest;12-17 The Barrens AoE"
+  },
+  {
+   "name": "RXP Undead Priest",
+   "race": "Undead",
+   "class": "Priest"
+  },
+  {
+   "name": "RXP Undead Rogue",
+   "race": "Undead",
+   "class": "Rogue"
+  },
+  {
+   "name": "RXP Undead Warlock",
+   "race": "Undead",
+   "class": "Warlock"
+  },
+  {
+   "name": "RXP Undead Warrior",
+   "race": "Undead",
+   "class": "Warrior"
+  }
+ ]
+}

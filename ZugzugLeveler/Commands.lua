@@ -1,38 +1,62 @@
--- Commands.lua -- /lev (also /leveler).
+-- Commands.lua -- /zug (also /zugzug).
 
 local _, ns = ...
 local C = ns.C
 
 local HELP = {
-  "/lev                       show or hide the window · /lev options: every toggle in one panel",
-  "/lev rec start [name]      start recording a run   · /lev rec stop · /lev rec mark <note>",
-  "/lev runs                  list recorded runs",
-  "/lev route list            routes you can follow",
-  "/lev route use <name>      follow a route (starts at step 1)",
-  "/lev route fromrun <n> [name]   turn recorded run n into a route and follow it",
-  "/lev route delete <name>   delete a saved route   · /lev route off · /lev route resume (back where you left a guide)",
-  "/lev why                   what the step wants and why: the zone, the guide, your level, quests it skips · why debug",
-  "/lev coach on|off          heads-ups when the route changes zone, and a question when you seem stuck or lost",
-  "/lev model                 your character in 3D, wearing what you wear (drag to turn)",
-  "/lev sync                  save now for the companion page (reloads the UI; also the window's Sync button and a key)",
-  "/lev live on|off|check     XP, level and quests on the companion page as you play (the game's chat log)",
-  "/lev skip · /lev back · /lev step <n>",
-  "/lev questlog (/lev ql)    no guide: your quest log + nearby quest givers, shortest order · ql debug · ql accept on|off",
-  "/lev optimize              do the next steps in the shortest order (from where you stand) · optimize auto|suggest|off|clear",
+  "/zug                       show or hide the window · /zug options: every toggle in one panel",
+  "/zug rec start [name]      start recording a run   · /zug rec stop · /zug rec mark <note>",
+  "/zug runs                  list recorded runs",
+  "/zug route list            routes you can follow",
+  "/zug route use <name>      follow a route (starts at step 1)",
+  "/zug route fromrun <n> [name]   turn recorded run n into a route and follow it",
+  "/zug route delete <name>   delete a saved route   · /zug route off · /zug route resume (back where you left a guide)",
+  "/zug why                   what the step wants and why: the zone, the guide, your level, quests it skips · why debug",
+  "/zug coach on|off          heads-ups when the route changes zone, and a question when you seem stuck or lost",
+  "/zug goal speed|complete   fastest leveling, or completion (reputation, professions, every quest)",
+  "/zug prices                at the auction house: read prices for the page (once every 15 min; also a button there)",
+  "/zug model                 your character in 3D, wearing what you wear (drag to turn)",
+  "/zug sync                  save now for the companion page (reloads the UI; also the window's Sync button and a key)",
+  "/zug live on|off|check     XP, level and quests on the companion page as you play (the game's chat log)",
+  "/zug pause · /zug resume   a detour of your own: nothing timed, coach quiet, arrow rests (also the window's button and a key)",
+  "/zug errors [clear]        a report of the addon's errors to copy (no character name in it; nothing is sent)",
+  "/zug talents [list|<name>|auto|off]  the talent to take next (RestedXP's talent guides)",
+  "/zug party on|off         share your step and quest progress with party members who use the addon",
+  "/zug peon on|off          the talking peon beside the window, off by default (says what the coach says; click him)",
+  "/zug skip · /zug back · /zug step <n>",
+  "/zug questlog (/zug ql)    no guide: your quest log + nearby quest givers, shortest order · ql debug · ql accept on|off",
+  "/zug optimize              do the next steps in the shortest order (from where you stand) · optimize auto|suggest|off|clear",
   "/swap                      set this step (and its quest) aside for now; back on level-up · /swap back · /swap list",
-  "/lev export [route]        the route as Lua, for a routes/*.lua file",
-  "/lev assist route|all|off  auto accept/turn-in (Shift skips)   · /lev greys on|off",
-  "/lev release on|off        auto-release and retrieve corpse (default off)",
-  "/lev arrow on|off          the on-screen arrow (our TomTom)   · /lev pin on|off  the game's map pin + marker",
+  "/zug export [route]        the route as Lua, for a routes/*.lua file",
+  "/zug assist route|all|off  auto accept/turn-in (Shift skips)   · /zug greys on|off",
+  "/zug release on|off        auto-release and retrieve corpse (default off)",
+  "/zug arrow on|off          the on-screen arrow (our TomTom)   · /zug pin on|off  the game's map pin + marker",
   "/way x y [text] · /way <uiMapID> x y [text] · /way clear   a manual target; right-click the arrow to drop it",
-  "/lev xp reset              start a new XP session",
-  "/lev danger on|off · /lev flight (known flight points, speeds)",
-  "/lev prof                  profession plan: what to craft/gather, materials, trainers · prof way · prof on|off",
-  "/lev map on|off · /lev targetbutton on|off · /lev downtime [reset] · /lev splits reset",
-  "Key Bindings > AddOns > zugzugleveler: keys for the quest-item and target buttons (shift-drag to move them)",
+  "/zug xp reset              start a new XP session",
+  "/zug danger on|off · /zug flight (known flight points, speeds)",
+  "/zug prof                  profession plan: what to craft/gather, materials, trainers · prof way · prof on|off",
+  "/zug map on|off · /zug targetbutton on|off · /zug downtime [reset] · /zug splits reset",
+  "Key Bindings > AddOns > zugzug_leveler: keys for the quest-item and target buttons (shift-drag to move them)",
 }
 
 local function onoff(v) return v == "on" end
+
+-- The report /zug errors shows: version, client, class and level, each error.
+-- No character or realm name, so it can be pasted in public.
+function ns.errorReport()
+  local out = { "zugzug_leveler error report" }
+  local v, build = C.try(GetBuildInfo)
+  local _, cls = C.try(UnitClass, "player")
+  local last = ns.db.errors[#ns.db.errors]
+  out[#out + 1] = ("addon %s · client %s (%s) · %s level %s"):format(last.version or "?", tostring(v or "?"), tostring(build or "?"),
+    tostring(cls or "?"), tostring(C.try(UnitLevel, "player") or "?"))
+  for _, e in ipairs(ns.db.errors) do
+    out[#out + 1] = ("%s  in %s: %s"):format(date and date("%Y-%m-%d %H:%M", e.at) or tostring(e.at), e.event, e.err)
+  end
+  out[#out + 1] = ""
+  out[#out + 1] = "Paste this in a new issue at https://github.com/michael-slop/wow-leveler/issues, or send it to whoever gave you the addon."
+  return table.concat(out, "\n")
+end
 
 local function runLabel(i, r)
   local secs = (r.stopped or C.epoch()) - r.started
@@ -46,7 +70,7 @@ local function route(args)
   local E, Route = ns.Engine, ns.Route
   if sub == "list" or sub == "" then
     local list = Route.List()
-    if #list == 0 then C.print("no routes yet: record one with /lev rec start") end
+    if #list == 0 then C.print("no routes yet: record one with /zug rec start") end
     for _, r in ipairs(list) do C.print("%s  |cff999999%d steps, %s|r", r.name, r.steps, r.from) end
   elseif sub == "use" then
     if not Route.Get(rest) then return C.print("no route %q", rest) end
@@ -55,7 +79,7 @@ local function route(args)
   elseif sub == "fromrun" then
     local n, name = rest:match("^(%d+)%s*(.-)$")
     local run = n and ns.db.runs and ns.db.runs[tonumber(n)]
-    if not run then return C.print("no run #%s (/lev runs)", tostring(n)) end
+    if not run then return C.print("no run #%s (/zug runs)", tostring(n)) end
     name = (name ~= "" and name) or run.name or ("run " .. n)
     local def = Route.FromRun(run, name)
     Route.Save(def)
@@ -73,7 +97,7 @@ local function route(args)
     ns.Way.clear()
     ns.Fire("SL_ROUTE", nil)
   else
-    C.print("unknown: /lev route %s", sub)
+    C.print("unknown: /zug route %s", sub)
   end
 end
 
@@ -101,10 +125,9 @@ end
 SLASH_ZUGZUGLEVELERSWAP1 = "/swap"
 SlashCmdList.ZUGZUGLEVELERSWAP = function(msg) ns.swapCommand(msg) end
 
-SLASH_ZUGZUGLEVELER1 = "/lev"
-SLASH_ZUGZUGLEVELER2 = "/leveler"
-SLASH_ZUGZUGLEVELER3 = "/zug"
-SLASH_ZUGZUGLEVELER4 = "/zugzug"
+-- /zug, and /zugzug: the peon's own words (/lev and /leveler were retired 2026-10-18)
+SLASH_ZUGZUGLEVELER1 = "/zug"
+SLASH_ZUGZUGLEVELER2 = "/zugzug"
 SlashCmdList.ZUGZUGLEVELER = function(msg)
   local cmd, args = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
   cmd = cmd:lower()
@@ -113,11 +136,11 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
   elseif cmd == "rec" then
     local sub, rest = args:match("^(%S*)%s*(.-)$")
     if sub == "start" then
-      if ns.Rec.active() then return C.print("already recording; /lev rec stop first") end
+      if ns.Rec.active() then return C.print("already recording; /zug rec stop first") end
       C.print("recording run #%d", ns.Rec.start(rest))
     elseif sub == "stop" then
       local n = ns.Rec.stop()
-      C.print(n and ("stopped run #" .. n .. " · /lev route fromrun " .. n .. " to follow it") or "not recording")
+      C.print(n and ("stopped run #" .. n .. " · /zug route fromrun " .. n .. " to follow it") or "not recording")
     elseif sub == "mark" then
       if ns.Rec.mark(rest) then C.print("marked: %s", rest) else C.print("not recording") end
     else
@@ -132,15 +155,34 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
     for _, l in ipairs(ns.Coach.why()) do C.print(l) end
   elseif cmd == "sync" then ns.Live.sync()
   elseif cmd == "model" then ns.Model.toggle()
+  elseif cmd == "prices" then ns.Auction.scan()
+  elseif cmd == "pause" then if args == "" then ns.Pause.toggle() else ns.Pause.set(onoff(args)) end
+  elseif cmd == "resume" then ns.Pause.set(false)
+  elseif cmd == "errors" then
+    if args == "clear" then ns.db.errors = nil; C.print("error list cleared")
+    elseif not (ns.db.errors and #ns.db.errors > 0) then C.print("no errors kept. Good.")
+    else ns.UI.showText("Error report", ns.errorReport()) end
+  elseif cmd == "talents" or cmd == "talent" then ns.Talents.command(args)
+  elseif cmd == "party" then ns.Party.toggle(args ~= "off"); C.print("sharing your route place with your party: %s", args ~= "off" and "on" or "off")
+  elseif cmd == "peon" then
+    local v = args == "" and not (ns.db.peon == true) or (args ~= "" and args ~= "off")
+    ns.Peon.toggle(v); C.print("the peon: %s", v and "on" or "off")
+  elseif cmd == "goal" then
+    if args == "speed" or args == "complete" then
+      ns.db.goal, ns.db.goalAt = args, C.epoch()
+      if ns.Engine.evaluate then ns.Engine.evaluate() end
+    end
+    local g = ns.Route.goal()
+    C.print("goal: %s  |cff999999(/zug goal speed | /zug goal complete)|r", g == "speed" and "fastest leveling" or g == "complete" and "completion" or "not chosen")
   elseif cmd == "live" then
     if args == "on" or args == "off" then ns.Live.set(args == "on")
     elseif args == "check" then ns.Live.check()
-    else C.print("live updates: %s  |cff999999(/lev live on|off|check)|r", ns.Live.logging() and "on" or "off") end
+    else C.print("live updates: %s  |cff999999(/zug live on|off|check)|r", ns.Live.logging() and "on" or "off") end
   elseif cmd == "coach" then
     ns.db.coach = args ~= "off"
     C.print("coach (heads-ups and questions): %s", ns.db.coach and "on" or "off")
   elseif cmd == "why" then
-    -- /lev why debug: what the engine sees for the current step, to find a step that will not pass
+    -- /zug why debug: what the engine sees for the current step, to find a step that will not pass
     local E, i = ns.Engine, ns.Engine.index()
     local s = E.step()
     if not s then return C.print("no current step") end
@@ -164,7 +206,7 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
     elseif args == "on" or args == "off" then ns.Prof.toggle(onoff(args)); C.print("profession help: %s", args)
     else
       local rows = ns.Prof.lines()
-      if #rows == 0 then C.print("no professions (or /lev prof on)") end
+      if #rows == 0 then C.print("no professions (or /zug prof on)") end
       for _, r in ipairs(rows) do C.print(r) end
     end
   elseif cmd == "options" or cmd == "config" or cmd == "settings" then ns.Options.open()
@@ -236,7 +278,7 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
     C.print("arrow: %s", args)
   elseif cmd == "xp" and args == "reset" then ns.XP.reset(); ns.UI.refresh(); C.print("new XP session")
   else
-    C.print("unknown command; /lev help")
+    C.print("unknown command; /zug help")
   end
   ns.UI.refresh()
 end
@@ -260,6 +302,6 @@ ns.On("PLAYER_ENTERING_WORLD", function()
     if r.name:sub(1, #prefix) == prefix then mine[#mine + 1] = r.name end
   end
   if #mine > 0 then
-    C.print("routes for you: %s  ·  /lev route use <name>", table.concat(mine, ", "))
+    C.print("routes for you: %s  ·  /zug route use <name>", table.concat(mine, ", "))
   end
 end)

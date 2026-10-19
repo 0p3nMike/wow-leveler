@@ -43,7 +43,7 @@ func openBrowser(url string) {
 }
 
 func main() {
-	wow := flag.String("wow", `C:\Program Files (x86)\World of Warcraft`, "World of Warcraft folder")
+	wow := flag.String("wow", defaultWow(), "World of Warcraft folder")
 	client := flag.String("client", "", "client folder (default: the one with the addon installed)")
 	addr := flag.String("addr", "127.0.0.1:7830", "listen address (keep it 127.0.0.1)")
 	open := flag.Bool("open", true, "open the page in your browser")
@@ -54,7 +54,7 @@ func main() {
 	wowSet := false
 	flag.Visit(func(f *flag.Flag) { wowSet = wowSet || f.Name == "wow" })
 	if *uninstall || *install || (bundledAddon() != nil && len(os.Args) == 1) {
-		fmt.Println("zugzugleveler setup")
+		fmt.Println("zugzug_leveler setup")
 		var err error
 		if *uninstall {
 			err = runUninstall()
@@ -89,6 +89,7 @@ func main() {
 				fmt.Printf("moved %d save(s) from sl0p.leveler to zugzugleveler\n", n)
 			}
 			srv.backup.Take(srv.saveFiles())
+			srv.chatStrings()
 			time.Sleep(time.Minute)
 		}
 	}()
@@ -110,13 +111,13 @@ func main() {
 	}
 
 	if ours(*addr) {
-		fmt.Printf("zugzugleveler companion is already running at %s\n", url)
+		fmt.Printf("zugzug_leveler companion is already running at %s\n", url)
 		if *open {
 			openBrowser(url)
 		}
 		return
 	}
-	fmt.Printf("zugzugleveler companion\n  addon:  %s\n  page:   %s\n  (Ctrl+C to stop)\n", paths.AddonDir(), url)
+	fmt.Printf("zugzug_leveler companion\n  addon:  %s\n  page:   %s\n  (Ctrl+C to stop)\n", paths.AddonDir(), url)
 	if *open {
 		openBrowser(url)
 	}

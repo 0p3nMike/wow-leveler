@@ -32,11 +32,14 @@ CLASSES = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", 
 class Who:
     """The character the route is for -- the inputs to RXP's applies()."""
 
-    def __init__(self, race, cls, faction, hardcore=False, ssf=False, xprate=1.0):
+    def __init__(self, race, cls, faction, hardcore=False, ssf=False, xprate=1.0, modes=False):
         self.race = "Scourge" if race == "Undead" else race
         self.cls = cls.upper()
         self.faction = faction
         self.hardcore, self.ssf, self.xprate = hardcore, ssf, xprate
+        # modes: keep RXP's hardcore/softcore/ssf/ah steps, marked (mode = "hc,ssf"),
+        # for the addon to show or pass at play time (Engine.applies) instead of here
+        self.modes = modes
         self.unknown = set()  # tokens we could not decide at import time
 
     def applies(self, text):
@@ -165,18 +168,29 @@ def parse_guide(text, who, source):
             "head": head, "steps": steps, "source": source}
 
 
+# RXP's play-style tags and the mark they get in a route file (who.modes)
+MODE_TAGS = (("hardcore", "hc"), ("softcore", "sc"), ("ssf", "ssf"), ("ah", "ah"))
+
+
+def step_mode(step):
+    """'hc,ssf' etc. for a step RXP shows only in some play styles, or None."""
+    marks = [m for tag, m in MODE_TAGS if tag in step["tags"]]
+    return ",".join(marks) or None
+
+
 def step_shown(step, who):
     t = step["tags"]
-    if "hardcore" in t and not who.hardcore:
-        return False
-    if "softcore" in t and who.hardcore:
-        return False
     if "season" in t or "som" in t:
         return False
-    if "ssf" in t and not who.ssf:
-        return False
-    if "ah" in t and who.ssf:
-        return False
+    if not who.modes:
+        if "hardcore" in t and not who.hardcore:
+            return False
+        if "softcore" in t and who.hardcore:
+            return False
+        if "ssf" in t and not who.ssf:
+            return False
+        if "ah" in t and who.ssf:
+            return False
     if "xprate" in t:
         m = re.match(r"^([<>]?)\s*(\d+\.?\d*)-?(\d*\.?\d*)", t["xprate"])
         if m:
@@ -398,7 +412,10 @@ def convert_step(st, maps, who, state):
             out.append(o)
         elif coord:
             out.append({"act": "goto", "text": text, "_c": coord})
+    mode = step_mode(st) if who.modes else None
     for s in out:
+        if mode:
+            s["mode"] = mode
         c = s.pop("_c", None)
         if c:
             for k in ("map", "cont", "wx", "wy", "x", "y"):
@@ -458,7 +475,7 @@ def lua(v):
     raise TypeError(v)
 
 
-KEYS = ["act", "q", "obj", "title", "text", "hint", "npc", "mobs", "use", "map", "x", "y", "cont", "wx", "wy", "r", "lvl", "xp", "opt", "need", "after", "loop", "path"]
+KEYS = ["act", "q", "obj", "title", "text", "hint", "npc", "mobs", "use", "map", "x", "y", "cont", "wx", "wy", "r", "lvl", "xp", "opt", "mode", "need", "after", "loop", "path"]
 
 
 def write_route(path, name, steps, guides_used, commit, who, sections=()):
@@ -522,8 +539,8 @@ def main(argv=None):
     ap.add_argument("--path", help="guides to take in order, ';'-separated; #next is followed after the last "
                     "(e.g. '1-6 Tirisfal Glades;6-12 Tirisfal Glades;12-14 Silverpine Forest;12-17 The Barrens AoE')")
     ap.add_argument("--xprate", type=float, default=1.0, help="RXP's XP-rate setting (default 1)")
-    ap.add_argument("--hardcore", action="store_true")
-    ap.add_argument("--ssf", action="store_true")
+    ap.add_argument("--hardcore", action="store_true", help="bake in hardcore (by default its steps are kept, marked, for the addon's option)")
+    ap.add_argument("--ssf", action="store_true", help="bake in self-found (by default its steps are kept, marked)")
     ap.add_argument("--name", help="route name (default 'RXP <race> <class>')")
     ap.add_argument("--out", default=os.path.join("ZugzugLeveler", "routes", "rxp"))
     a = ap.parse_args(argv)
@@ -534,7 +551,8 @@ def main(argv=None):
         ap.error("--faction is required for race %s" % a.race)
     if a.cls.upper() not in CLASSES:
         ap.error("unknown class %s" % a.cls)
-    who = Who(race, a.cls, faction, a.hardcore, a.ssf, a.xprate)
+    # no --hardcore/--ssf: keep those steps, marked, so one route serves every play style
+    who = Who(race, a.cls, faction, a.hardcore, a.ssf, a.xprate, modes=not (a.hardcore or a.ssf))
 
     guides = load_guides(a.rxp, who)
     maps = map_ids(a.rxp)

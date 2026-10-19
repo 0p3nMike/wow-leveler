@@ -173,7 +173,7 @@ end)
 -- -------------------------------------------------------------- breadcrumbs
 
 ns.On("SL_TICK", function()
-  if not run then return end
+  if not run or ns.Pause.on() then return end
   local now = C.epoch()
   if now - lastCrumb.t < CRUMB_EVERY then return end
   local mapID, x, y = C.mapPos()

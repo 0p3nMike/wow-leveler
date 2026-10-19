@@ -2,13 +2,13 @@
 --
 -- Adapted from ghoul's GhoulBridge assist() / gossipPick() / greetingPick() /
 -- sellGreys(), which are Michael's own. Changed for a real account:
---   * By default it only acts on quests in the active route (/lev assist
+--   * By default it only acts on quests in the active route (/zug assist
 --     route|all|off). Hold Shift while talking to an NPC to do it yourself.
 --   * It never picks between rewards. With a choice it prints the one that
 --     sells best and leaves the window open for you.
 --   * It follows Blizzard's own QuestFrame rules (Mainline QuestFrame.lua in
 --     the 1.60.1 export): no PvP-flagged quests, nothing that costs gold.
---   * Auto-release on death is off unless you turn it on (/lev release on).
+--   * Auto-release on death is off unless you turn it on (/zug release on).
 -- All of these are unprotected calls the default UI makes from its own
 -- buttons. None of ghoul's bot (keys, screen reading) is part of this addon.
 
@@ -122,7 +122,7 @@ function A.checkOffered(offered)
     A.notOffered[s.q] = nil
   elseif not A.notOffered[s.q] then
     A.notOffered[s.q] = true
-    C.print("|cffff6060%s isn't offering %s yet|r: you're missing a level or a lead-in quest. /lev why · /lev skip",
+    C.print("|cffff6060%s isn't offering %s yet|r: you're missing a level or a lead-in quest. /zug why · /zug skip",
       try(UnitName, "npc") or s.npc or "this NPC", s.title or ("quest " .. s.q))
     if ns.UI then ns.UI.refresh() end
   end

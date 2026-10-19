@@ -1,16 +1,18 @@
 ## Interface: 16001
 ## AllowLoadGameType: forever, camelot
-## Title: zugzugleveler
+## Title: zugzug_leveler
 ## Notes: Leveling guide for WoW: Forever: RestedXP routes for every race and class with an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
 ## Author: michael-slop
-## Version: 0.2.0-alpha
+## Version: 0.3.0-alpha
 ## Category: Quests & Leveling
-## X-Credits: RestedXP Guides (CC BY-NC-SA 4.0), AllTheThings (MIT)
+## IconTexture: Interface\AddOns\ZugzugLeveler\media\icon
+## X-Credits: RestedXP Guides (CC BY-NC-SA 4.0), AllTheThings (MIT), the peon after "[Warcraft] - Orc peon" by Northcliffe (CC BY-NC 4.0), his voice by a friend of the project
 ## SavedVariables: ZugzugLevelerDB
 ## SavedVariablesPerCharacter: ZugzugLevelerCharDB
 
 Compat.lua
 Events.lua
+Pause.lua
 XP.lua
 Recorder.lua
 Route.lua
@@ -25,6 +27,8 @@ MapPath.lua
 data\Danger.lua
 data\Professions.lua
 data\Quests.lua
+data\Talents.lua
+data\Voice.lua
 QuestInfo.lua
 Professions.lua
 Danger.lua
@@ -34,7 +38,12 @@ QuestLog.lua
 Coach.lua
 Live.lua
 Model.lua
+Auction.lua
+Loot.lua
+Party.lua
+Talents.lua
 UI.lua
+Peon.lua
 Options.lua
 Commands.lua
 Export.lua

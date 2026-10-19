@@ -7,7 +7,7 @@ package main
 // web browsers" and using elements of the site without written consent, so
 // it is not switched on for anyone: the page says so and leaves the choice
 // to the player. With it off, the page uses only the game's own data (the
-// addon's), and the 3D character lives in the game (/lev model).
+// addon's), and the 3D character lives in the game (/zug model).
 
 import (
 	"encoding/json"
@@ -29,7 +29,7 @@ func (s *Server) gate(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// /api/settings: GET -> {wowhead}; POST {wowhead} (this PC only).
+// /api/settings: GET -> {wowhead, updates}; POST {wowhead?, updates?} (this PC only).
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	c := s.lan.loadConfig()
 	if r.Method == http.MethodPost {
@@ -37,14 +37,19 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "missing header", http.StatusForbidden)
 			return
 		}
-		var body struct{ Wowhead bool }
+		var body struct{ Wowhead, Updates *bool }
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, nil, err)
 			return
 		}
-		c.Wowhead = body.Wowhead
+		if body.Wowhead != nil {
+			c.Wowhead = *body.Wowhead
+		}
+		if body.Updates != nil {
+			c.Updates = *body.Updates
+		}
 		s.lan.saveConfig(c)
 	}
-	writeJSON(w, map[string]any{"wowhead": c.Wowhead}, nil)
+	writeJSON(w, map[string]any{"wowhead": c.Wowhead, "updates": c.Updates}, nil)
 }

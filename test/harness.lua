@@ -67,12 +67,14 @@ date = os.date
 
 -- ------------------------------------------------------------ fake API
 function GetServerTime() return W.t end
+function GetLocale() return "deDE" end
+ERR_QUEST_ACCEPTED_S = "Quest accepted: %s"
 function GetTime() return W.gt end
 function UnitXP() return W.xp end
 function UnitXPMax() return W.xpMax end
 function UnitLevel() return W.level end
 function GetXPExhaustion() return W.rested end
-function UnitName() return "Tester" end
+function UnitName(u) if u == nil or u == "player" then return "Tester", "Testsson" end return "Tester" end
 function GetRealmName() return "Realm" end
 function UnitClass() return "Warrior", "WARRIOR", 1 end
 function UnitRace() return "Human", "Human", 1 end
@@ -252,7 +254,10 @@ fire("ADDON_LOADED", "ZugzugLeveler")
 fire("PLAYER_ENTERING_WORLD")
 check(ZugzugLevelerDB and ZugzugLevelerCharDB, "SavedVariables tables created")
 check(SlashCmdList.ZUGZUGLEVELER, "slash command registered")
-local lev = SlashCmdList.ZUGZUGLEVELER
+check(ZugzugLevelerCharDB.char and ZugzugLevelerCharDB.char.name == "Tester" and ZugzugLevelerCharDB.char.surname == "Testsson", "first name and surname saved")
+check(ZugzugLevelerDB.chatStrings and ZugzugLevelerDB.chatStrings.s.ERR_QUEST_ACCEPTED_S == "Quest accepted: %s" and ZugzugLevelerDB.chatStrings.locale == "deDE",
+  "the client's own chat strings are saved for the companion")
+local zug = SlashCmdList.ZUGZUGLEVELER
 
 -- XP math
 check(ns.XP.delta({ xp = 900, max = 1000, lvl = 5 }, 50, 1200, 6) == 150, "level-up delta = rest of old bar + new")
@@ -260,7 +265,7 @@ check(ns.XP.delta({ xp = 100, max = 1000, lvl = 5 }, 160, 1000, 5) == 60, "plain
 check(ns.XP.fmtTime(3725) == "1h 02m", "fmtTime hours: " .. ns.XP.fmtTime(3725))
 
 -- recorder: a short played run
-lev("rec start test run")
+zug("rec start test run")
 check(ns.Rec.active(), "recording started")
 W.t = W.t + 30; W.x = 0.41; tick(1)
 accept(101, "Wolves")
@@ -276,8 +281,8 @@ W.log[103] = nil; fire("QUEST_REMOVED", 103)
 W.t = W.t + 60; W.map = 1430; W.x, W.y = 0.20, 0.30; fire("ZONE_CHANGED_NEW_AREA")
 finishObj(102)
 turnin(102, 200)
-lev("rec mark grind here")
-lev("rec stop")
+zug("rec mark grind here")
+zug("rec stop")
 check(not ns.Rec.active(), "recording stopped")
 
 local run = ZugzugLevelerDB.runs[1]
@@ -293,7 +298,7 @@ local s = ns.XP.session()
 check(s.total == 580 and s.quest == 500, ("session split total=%d quest=%d"):format(s.total, s.quest))
 
 -- run -> route
-lev("route fromrun 1 Elwynn v1")
+zug("route fromrun 1 Elwynn v1")
 local r = ns.Route.Get("Elwynn v1")
 check(r ~= nil, "route saved from run")
 local acts = {}
@@ -314,7 +319,7 @@ ZugzugLevelerCharDB.route = nil
 W.log, W.turnedIn = {}, {}
 W.map, W.x, W.y = 1429, 0.40, 0.50
 resetCalls()
-lev("route use Elwynn v1")
+zug("route use Elwynn v1")
 check(ns.Engine.index() == 1, "starts at step 1")
 check(hasCall("SetUserWaypoint", 1429) and hasCall("SuperTrack", true), "waypoint + arrow set for step 1")
 accept(101, "Wolves")
@@ -327,9 +332,9 @@ check(ZugzugLevelerCharDB.stats[1] ~= nil, "per-step stats recorded")
 -- out of order: 102 already done before we reach its steps
 W.turnedIn[102] = true; fire("QUEST_LOG_UPDATE")
 check(ns.Engine.index() == 7, "already-turned-in quest skips its steps, now " .. ns.Engine.index())
-lev("skip")
+zug("skip")
 check(ns.Engine.index() == 8 and ns.Engine.step() == nil, "skip past last step finishes the route")
-lev("back")
+zug("back")
 check(ns.Engine.index() == 7, "back goes one step back")
 
 -- goto step by distance
@@ -337,7 +342,7 @@ ns.Route.Register({ name = "goto test", steps = {
   { act = "goto", map = 1429, x = 0.60, y = 0.50, r = 15 },
   { act = "note", text = "end" },
 } })
-lev("route use goto test")
+zug("route use goto test")
 W.map, W.x, W.y = 1429, 0.50, 0.50; tick(1)
 check(ns.Engine.index() == 1, "100 yards away: goto not done")
 W.x = 0.59; tick(1)
@@ -346,7 +351,7 @@ W.x = 0.40; tick(1)
 check(ns.Engine.index() == 2, "walking away does not undo a finished step")
 
 -- assist, route mode
-lev("route use Elwynn v1")
+zug("route use Elwynn v1")
 W.log, W.turnedIn = {}, {}
 resetCalls()
 W.qf.id = 101; fire("QUEST_DETAIL")
@@ -378,13 +383,13 @@ resetCalls(); fire("MERCHANT_SHOW")
 check(hasCall("UseContainerItem", 0, 1) and #W.calls == 1, "sells only the grey with a value")
 resetCalls(); fire("PLAYER_DEAD")
 check(not hasCall("RepopMe"), "no auto-release by default")
-lev("release on"); fire("PLAYER_DEAD")
+zug("release on"); fire("PLAYER_DEAD")
 check(hasCall("RepopMe"), "auto-release when turned on")
-lev("assist off"); resetCalls(); W.qf.id = 101; fire("QUEST_DETAIL")
+zug("assist off"); resetCalls(); W.qf.id = 101; fire("QUEST_DETAIL")
 check(not hasCall("AcceptQuest"), "assist off does nothing")
 
 -- RXP-style steps: objectives, conditions, optional, world positions
-lev("assist route")
+zug("assist route")
 ns.Route.Register({ name = "rxp test", steps = {
   { act = "complete", q = 201, obj = 2 },
   { act = "turnin", q = 202, opt = true },
@@ -395,7 +400,7 @@ ns.Route.Register({ name = "rxp test", steps = {
 } })
 W.log = { [201] = { complete = false, objs = { { finished = true }, { finished = false } } } }
 W.turnedIn = {}
-lev("route use rxp test")
+zug("route use rxp test")
 check(ns.Engine.index() == 1, "objective 2 not finished: complete step waits")
 resetCalls()
 W.log[201].objs[2].finished = true
@@ -441,7 +446,7 @@ local r1, g1 = A.color(math.pi)
 check(r0 == 0 and g0 == 1 and r1 == 1 and g1 == 0, "green ahead, red behind")
 
 -- /way: a manual target beats the route, and arriving drops it
-lev("route use goto test")
+zug("route use goto test")
 W.map, W.x, W.y, W.facing = 1429, 0.10, 0.10, 0
 resetCalls()
 SlashCmdList.ZUGZUGLEVELERWAY("50 40 the tree")
@@ -455,7 +460,7 @@ W.x, W.y = 0.499, 0.40; A.update()
 check(not ns.Way.current() or not ns.Way.current().manual, "arriving at a /way drops it, back to the route")
 SlashCmdList.ZUGZUGLEVELERWAY("50 40"); SlashCmdList.ZUGZUGLEVELERWAY("clear")
 check(not (ns.Way.current() or {}).manual, "/way clear")
-lev("arrow off"); lev("arrow on"); lev("pin off"); lev("pin on")
+zug("arrow off"); zug("arrow on"); zug("pin off"); zug("pin on")
 
 -- sub-objectives: travel mode outside the area, work mode inside it
 ns.Route.Register({ name = "obj test", steps = {
@@ -474,7 +479,7 @@ W.log = {
 }
 W.turnedIn = {}
 W.map, W.x, W.y = 1429, 0.10, 0.10            -- world (100, 100): far away
-lev("route use obj test")
+zug("route use obj test")
 local function ui() return table.concat(ns.UI.lines(), "\n") end
 check(ns.Way.mode() == "travel", "far from the area: travel mode")
 check(ns.Way.current().wx == 500 and not ns.Way.current().dim, "travel: arrow heads for the area")
@@ -513,7 +518,7 @@ ns.Route.Register({ name = "xp gate", steps = {
   { act = "accept", q = 401 },
 } })
 W.level, W.xp, W.xpMax, W.log, W.turnedIn = 5, 100, 2800, {}, {}
-lev("route use xp gate")
+zug("route use xp gate")
 check(ns.Engine.index() == 1, "at level 5 + 100 xp the grind step holds")
 W.xp = 1950; fire("PLAYER_XP_UPDATE", "player"); tick(1)
 check(ns.Engine.index() == 2, "at 1950 xp it passes")
@@ -526,7 +531,7 @@ ns.Route.Register({ name = "offer test", steps = {
   { act = "note", text = "end" },
 } })
 W.log, W.turnedIn, W.map, W.x, W.y = {}, {}, 1429, 0.1, 0.1
-lev("route use offer test")
+zug("route use offer test")
 W.npc = "Someone Else"; W.gossip = { active = {}, available = { { questID = 777 } } }
 fire("GOSSIP_SHOW")
 check(not ns.Assist.notOffered[501], "a different NPC proves nothing")
@@ -547,7 +552,7 @@ ns.Route.Register({ name = "swap test", steps = {
   { act = "turnin", q = 602 },
 } })
 W.log, W.turnedIn, W.level = {}, {}, 5
-lev("route use swap test")
+zug("route use swap test")
 check(ns.Engine.index() == 1, "starts on the locked quest")
 SlashCmdList.ZUGZUGLEVELERSWAP("")
 check(ns.Engine.index() == 2, "/swap moves on to the next quest")
@@ -562,8 +567,8 @@ SlashCmdList.ZUGZUGLEVELERSWAP("")
 accept(601, "Locked")
 check(#ns.Engine.deferred() == 0, "accepting it anyway brings it back")
 check(ns.Engine.index() == 3, "and the route continues at its do step: " .. ns.Engine.index())
-SlashCmdList.ZUGZUGLEVELERSWAP(""); lev("swap back")
-check(#ns.Engine.deferred() == 0, "/lev swap back")
+SlashCmdList.ZUGZUGLEVELERSWAP(""); zug("swap back")
+check(#ns.Engine.deferred() == 0, "/zug swap back")
 -- a regenerated route file renumbers its steps: set-aside marks are dropped on load
 check(ZugzugLevelerCharDB.routeSteps == 6, "route use records the step count")
 SlashCmdList.ZUGZUGLEVELERSWAP("")
@@ -576,7 +581,7 @@ resetCalls(); ns.Fire("SL_READY")
 check(#ns.Engine.deferred() == 0 and ZugzugLevelerCharDB.routeSteps == 7, "changed route file: set-aside steps cleared")
 table.remove(swapSteps, 1); ZugzugLevelerCharDB.routeSteps = 6
 -- ...and finished marks ahead of your place belonged to the old numbering
-ZugzugLevelerCharDB.step, ZugzugLevelerCharDB.sticky = 3, { [1] = true, [5] = true }
+ZugzugLevelerCharDB.step, ZugzugLevelerCharDB.sticky, ZugzugLevelerCharDB.stepKey = 3, { [1] = true, [5] = true }, nil -- an older save: no step key
 ZugzugLevelerCharDB.routeSteps = 99; ns.Fire("SL_READY")
 local sk = ZugzugLevelerCharDB.sticky
 check(sk[1] and sk[2] and not sk[5] and ZugzugLevelerCharDB.step == 3, "changed route file: done = everything before your place, nothing after")
@@ -594,8 +599,8 @@ W.log, W.turnedIn = {}, {}
 local function printed(s, from)
   for k = from or 1, #W.printed do if W.printed[k]:find(s, 1, true) then return true end end
 end
-lev("route use missing test")
-lev("step 2")
+zug("route use missing test")
+zug("step 2")
 local mark = #W.printed
 accept(652, "Held")
 check(ns.Engine.index() == 5, "turn-in of a quest not in the log, and its follow-up's accept, are passed: now " .. ns.Engine.index())
@@ -624,7 +629,7 @@ ns.Route.Register({ name = "hearth test", steps = {
   { act = "accept", q = 714, map = 1430, cont = 0, wx = 920, wy = 900 },
 } })
 W.log, W.turnedIn, W.map, W.x, W.y = {}, {}, 1429, 0.1, 0.1
-lev("route use hearth test")
+zug("route use hearth test")
 local hs = ns.Route.Get("hearth test").steps
 check(not ns.Engine.isDone(2, hs), "hearth not done while still in the old zone")
 local w = ns.Optimizer.window()
@@ -639,8 +644,8 @@ check(ns.Engine.index() == 3 and ZugzugLevelerCharDB.deferred[1] == "left", "the
 check(printed("you moved on from", mark), "chat names what was left behind")
 W.level = 6; fire("PLAYER_LEVEL_UP", 6); W.level = 5
 check(ZugzugLevelerCharDB.deferred[1] == "left", "a level-up does not bring it back")
-lev("swap back")
-check(not ZugzugLevelerCharDB.deferred[1], "/lev swap back does")
+zug("swap back")
+check(not ZugzugLevelerCharDB.deferred[1], "/zug swap back does")
 W.map = 1429
 
 -- the coach: why the route wants this, a heads-up on a zone change, and a
@@ -656,13 +661,13 @@ ns.Route.Register({ name = "coach test", sections = { { from = 1, name = "1-6 St
   { act = "complete", q = 802, obj = 1, map = 1430, x = 0.4, y = 0.3 },
 } })
 W.log, W.turnedIn, W.map, W.x, W.y, W.level, W.combat = {}, {}, 1429, 0.5, 0.5, 5, false
-lev("route use coach test")
+zug("route use coach test")
 accept(801, "Near Quest"); accept(999, "Stray Quest")
 W.log[801].objs = { { text = "Boar slain: 0/5", finished = false } }; fire("QUEST_LOG_UPDATE")
 check(ns.Engine.index() == 2 and ns.Coach.state() == "questing", "coach: questing at the step")
 local why = table.concat(ns.Coach.why(), "\n")
 check(why:find("Still to do: Boar slain: 0/5", 1, true) and why:find("Kill boars", 1, true), "why: what is left, and the guide's hint")
-check(why:find("Stray Quest", 1, true) and why:find("/lev questlog", 1, true), "why: names your quests the route skips, and what to do")
+check(why:find("Stray Quest", 1, true) and why:find("/zug questlog", 1, true), "why: names your quests the route skips, and what to do")
 check(why:find('"1-6 Startzone", for levels 1-6; you are on pace', 1, true), "why: the guide part and your pace")
 -- stuck: 12 minutes at the step with nothing moving
 W.x = 0.6; ns.Coach.tick()
@@ -694,8 +699,25 @@ check(ZugzugLevelerCharDB.route == "coach test" and ns.Engine.index() == 4 and Z
   "resumed where you left it, set-aside steps and all")
 W.gt = W.gt + 11; ns.Coach.tick()
 check(ZugzugLevelerCharDB.coach and ZugzugLevelerCharDB.coach.state == "questing" and ZugzugLevelerCharDB.coach.why[1]:find("^Step 4 of 5"), "the why is saved for the companion page")
-lev("route off"); lev("route resume")
-check(ZugzugLevelerCharDB.route == "coach test" and ns.Engine.index() == 4, "/lev route off, then resume")
+zug("route off"); zug("route resume")
+check(ZugzugLevelerCharDB.route == "coach test" and ns.Engine.index() == 4, "/zug route off, then resume")
+-- one question at a time: the next waits its turn, and comes when the first closes
+local visible = true
+StaticPopup_Visible = function() return visible end
+local n0 = #asked
+ns.Coach.ask("qa", "First?", "Yes", "No", function() end, "hint")
+ns.Coach.ask("qa", "First again?", "Yes", "No", function() end, "hint")
+ns.Coach.ask("qb", "Second?", "Yes", "No", function() end, "hint")
+check(#asked == n0 and #ns.Coach.waiting == 2, "asked while another is up: they wait, once per key")
+local done = false
+ns.Coach.onIdle = function() done = true end
+visible = false
+asked[#asked].dlg.OnHide()
+check(#asked == n0 + 1 and asked[#asked].text == "First?" and #ns.Coach.waiting == 1, "the popup closed: the first that waited comes up")
+asked[#asked].dlg.OnHide(); asked[#asked].dlg.OnHide()
+check(asked[#asked].text == "Second?" and done, "then the next, then the first-run wizard's last word")
+check(ZugzugLevelerDB.wizardDone == true, "the first-run wizard ran once")
+StaticPopup_Visible = nil
 StaticPopupDialogs, StaticPopup_Show = nil, nil
 W.map, W.combat = 1429, nil
 
@@ -733,7 +755,7 @@ ns.Route.Register({ name = "qdb test", steps = {
   { act = "note", text = "end" },
 } })
 mark = #W.printed
-lev("route use qdb test")
+zug("route use qdb test")
 check(ZugzugLevelerCharDB.deferred[1] == "missing" and ZugzugLevelerCharDB.deferred[2] == "level", "set aside: one needs a lead-in, one a level")
 check(printed("because it needs quest 900 first", mark) and printed("it needs level 8 (you are 5). It comes back when you level up", mark), "chat says exactly why")
 W.turnedIn[900] = true; fire("QUEST_TURNED_IN", 900)
@@ -746,7 +768,7 @@ ns.Route.Register({ name = "qdb order", steps = {
   { act = "accept", q = 900, title = "First" }, { act = "turnin", q = 900, title = "First" },
   { act = "accept", q = 901, title = "Second" },
 } })
-lev("route use qdb order")
+zug("route use qdb order")
 check(not ns.Engine.missing(3, ns.Route.Get("qdb order").steps), "a lead-in the route does first does not block")
 check(#QI.availableOn(1429) >= 1, "quests you can take on a map, from the data's quest givers")
 ns.QuestDB, W.faction, W.level = {}, nil, 5
@@ -766,6 +788,26 @@ ns.RoutePrefs = { skip = { cooking = true } }
 check(not ns.Engine.applies({ act = "train", text = "Train Cooking" }) and ns.Engine.applies({ act = "train", text = "Train First Aid" }),
   "a kind you left out is passed over, the rest stays")
 ns.RoutePrefs = nil
+-- the goal: fastest leveling leaves out cooking, first aid and crafting trainers
+local cook, cls = { act = "train", text = "Train Cooking" }, { act = "train", text = "Train your class spells" }
+ZugzugLevelerDB.goal, ZugzugLevelerDB.goalAt = nil, nil
+check(not R.leftOut(cook), "no goal chosen: nothing left out")
+zug("goal speed")
+check(R.goal() == "speed" and R.leftOut(cook) and not R.leftOut(cls), "speed: cooking out, class training in")
+ns.RoutePrefs = { goal = "complete", at = ZugzugLevelerDB.goalAt + 10 }
+check(R.goal() == "complete" and not R.leftOut(cook), "a later choice on the page wins: completion keeps cooking")
+ns.RoutePrefs = { goal = "complete", at = 1 }
+check(R.goal() == "complete", "an older page choice does not undo a newer one")
+ZugzugLevelerDB.goal = "speed"; ns.RoutePrefs = { skip = {}, custom = true }
+check(not R.leftOut(cook), "step kinds picked on the page win over the goal's defaults")
+ns.RoutePrefs, ZugzugLevelerDB.goal, ZugzugLevelerDB.goalAt = nil, nil, nil
+-- what you are doing, read from the game
+local oldNow = ns.Downtime.now
+ns.Downtime.now = "afk"
+check(ns.Coach.activity() == "afk" and ns.Coach.PAUSE.afk, "afk: seen, and the stuck clock waits")
+ns.Downtime.now = "idle"; _G.MerchantFrame = { IsShown = function() return true end }
+check(ns.Coach.activity() == "vendor", "at a vendor")
+_G.MerchantFrame, ns.Downtime.now = nil, oldNow
 
 -- a listed mob's NPC number, learned when you target it (for the page's loot list)
 local oldGUID, oldName = UnitGUID, UnitName
@@ -779,27 +821,274 @@ fire("PLAYER_TARGET_CHANGED")
 check(not ZugzugLevelerDB.npcIds.Somebody, "players and unlisted creatures are not kept")
 UnitGUID, UnitName = oldGUID, oldName
 
+-- auction house prices: the whole house read in one go (C_AuctionHouse.ReplicateItems)
+do
+  local list = { -- index 0 first, as the replicate list counts
+    [0] = { "Linen Cloth", 1, 20, 1, true, 5, nil, 0, 0, 400, 0, nil, nil, nil, nil, 0, 2589, true },
+    [1] = { "Linen Cloth", 1, 10, 1, true, 5, nil, 0, 0, 150, 0, nil, nil, nil, nil, 0, 2589, true },
+    [2] = { "Heavy Linen Bandage", 1, 5, 1, true, 5, nil, 0, 0, 500, 0, nil, nil, nil, nil, 0, 2581, true },
+  }
+  local asked = 0
+  C_AuctionHouse = {
+    ReplicateItems = function() asked = asked + 1 end,
+    GetNumReplicateItems = function() return 3 end,
+    GetReplicateItemInfo = function(i) local e = list[i]; if e then return unpack(e, 1, 18) end end,
+  }
+  _G.AuctionHouseFrame = { IsShown = function() return true end }
+  mark = #W.printed
+  zug("prices")
+  fire("REPLICATE_ITEM_LIST_UPDATE")
+  local pr = ns.Auction.prices()
+  local linen = pr and pr.items[2589]
+  check(asked == 1 and linen and linen.p == 15 and linen.n == 2 and linen.q == 30 and linen.name == "Linen Cloth",
+    "lowest unit price, listings and quantity per item")
+  check(pr.items[2581].p == 100 and pr.listings == 3, "every listing read, from index 0")
+  zug("prices")
+  check(asked == 1 and printed("one full auction house read every 15 minutes", mark), "a second read within 15 minutes waits")
+  C_AuctionHouse, _G.AuctionHouseFrame = nil, nil
+end
+
 -- the 3D character in game, and the new name's commands
-lev("model")
-check(_G.ZugzugLevelerModel and _G.ZugzugLevelerModel:IsShown(), "/lev model shows your character in a model frame")
-lev("model")
-check(not _G.ZugzugLevelerModel:IsShown(), "and /lev model again hides it")
-check(SLASH_ZUGZUGLEVELER3 == "/zug" and SlashCmdList.ZUGZUGLEVELER, "/zug works as well as /lev")
+zug("model")
+check(_G.ZugzugLevelerModel and _G.ZugzugLevelerModel:IsShown(), "/zug model shows your character in a model frame")
+zug("model")
+check(not _G.ZugzugLevelerModel:IsShown(), "and /zug model again hides it")
+check(SLASH_ZUGZUGLEVELER1 == "/zug" and SLASH_ZUGZUGLEVELER2 == "/zugzug" and not SLASH_ZUGZUGLEVELER3, "/zug and /zugzug, and nothing else (no /lev)")
+
+-- pause / resume: a detour of your own (walking to a flight path, waiting for a friend)
+do
+  ZugzugLevelerCharDB.paused = nil
+  local sx = ns.XP.session()
+  local start0, total0 = sx.start, sx.total
+  local stepT0 = ZugzugLevelerCharDB.stepStart and ZugzugLevelerCharDB.stepStart.t
+  local played0 = ZugzugLevelerCharDB.split and ZugzugLevelerCharDB.split.played
+  local pb = _G.ZugzugLevelerPauseButton
+  check(pb and pb.scripts.OnClick and pb.play and not pb.play.shown, "a pause button beside Sync, showing the bars")
+  mark = #W.printed
+  pb.scripts.OnClick(pb)
+  check(ns.Pause.on() and printed("paused", mark) and pb.play.shown and not pb.bars[1].shown, "the button pauses, and turns into a play arrow")
+  check(ns.Coach.activity() == "paused" and ns.Coach.PAUSE.paused, "the coach sees it and waits")
+  W.xp = W.xp + 50; fire("PLAYER_XP_UPDATE", "player")
+  check(sx.total == total0, "XP on a detour is not the route's rate")
+  for _ = 1, 10 do W.gt = W.gt + 0.5; tick(1) end
+  W.t = W.t + 5
+  check(math.abs(ns.Pause.secs() - 5) < 0.01, "paused time counted: " .. ns.Pause.secs())
+  check(not ZugzugLevelerCharDB.split or ZugzugLevelerCharDB.split.played == played0, "the splits clock stands still")
+  check(ns.Downtime.now == "paused", "where-the-time-goes skips it")
+  local first = ns.UI.lines()[1] or ""
+  check(first:find("paused"), "the window says so: " .. first)
+  local cur = ns.Way.current()
+  check(not cur or cur.manual or ns.Arrow.resting(), "the arrow rests while following the route")
+  local r1, a1, s1 = ns.Arrow.idlePose(0.3)
+  local r2, a2, s2 = ns.Arrow.idlePose(2.0)
+  local r3 = ns.Arrow.idlePose(7.8) -- in the sweep
+  check(r1 ~= r2 and a1 ~= a2 and s1 ~= s2 and r3 >= 0 and r3 < 2 * math.pi and a1 > 0.4 and a1 <= 0.8, "the resting arrow drifts, breathes and sweeps")
+  ns.Pause.set(true) -- already paused: nothing changes
+  check(math.abs(ns.Pause.secs() - 5) < 0.01, "pausing twice keeps the clock")
+  mark = #W.printed
+  zug("resume")
+  check(not ns.Pause.on() and printed("resumed after", mark), "/zug resume")
+  check(sx.start == math.min(start0 + 5, W.t), "XP/hour does not count the pause")
+  check(not stepT0 or ZugzugLevelerCharDB.stepStart.t == math.min(stepT0 + 5, W.t), "nor does the step's time")
+  check(not ns.Arrow.resting(), "the arrow points again")
+  zug("pause"); check(ns.Pause.on(), "/zug pause toggles on"); zug("pause"); check(not ns.Pause.on(), "and off")
+  check(ZugzugLeveler_Pause and BINDING_NAME_ZUGZUGLEVELER_PAUSE, "a key binding for it")
+end
+
+-- error reports: a handler error is kept, /zug errors shows a report to copy
+do
+  ns.On("SL_TEST_BOOM", function() error("boom") end)
+  ns.Fire("SL_TEST_BOOM")
+  local e = ZugzugLevelerDB.errors and ZugzugLevelerDB.errors[#ZugzugLevelerDB.errors]
+  check(e and e.event == "SL_TEST_BOOM" and e.err:find("boom"), "a handler error is kept")
+  local shown
+  local old = ns.UI.showText
+  ns.UI.showText = function(title, text) shown = text end
+  zug("errors")
+  ns.UI.showText = old
+  check(shown and shown:find("zugzug_leveler error report", 1, true) and shown:find("SL_TEST_BOOM", 1, true) and not shown:find("Tester", 1, true),
+    "the report: version, client, the error, and no character name")
+  zug("errors clear")
+  check(not ZugzugLevelerDB.errors, "/zug errors clear")
+  for k, p in ipairs(W.printed) do if p:find("error in SL_TEST_BOOM", 1, true) then W.printed[k] = "(expected test error)" end end
+end
+
+-- loot you saw: per creature, each corpse once
+do
+  local slots = {
+    { link = "|cff9d9d9d|Hitem:2589::|h[Linen Cloth]|h|r", q = 2, src = { "Creature-0-1-2-3-299-0000AAAA", 2 } },
+    { link = nil, coin = true },
+    { link = "|Hitem:4865::|h[Ruined Pelt]|h", q = 1, src = { "Creature-0-1-2-3-299-0000AAAA", 1 } },
+  }
+  GetNumLootItems = function() return #slots end
+  GetLootSlotInfo = function(i) local s = slots[i]; return nil, s.link and s.link:match("%[(.-)%]"), s.q, nil, nil, nil, nil, nil, nil, s.coin end
+  GetLootSlotLink = function(i) return slots[i].link end
+  GetLootSourceInfo = function(i) local s = slots[i].src; if s then return s[1], s[2] end end
+  local oldGUID, oldDead = UnitGUID, UnitIsDead
+  UnitGUID = function(u) if u == "target" then return "Creature-0-1-2-3-299-0000AAAA" end end
+  UnitIsDead = function() return true end
+  fire("LOOT_OPENED")
+  local wolf = ZugzugLevelerDB.loot and ZugzugLevelerDB.loot[299]
+  check(wolf and wolf.n == 1 and wolf.items[2589].c == 1 and wolf.items[2589].q == 2 and wolf.items[4865].c == 1 and wolf.items[2589].name == "Linen Cloth", "a looted wolf: one corpse, what it dropped")
+  fire("LOOT_OPENED")
+  check(wolf.n == 1 and wolf.items[2589].q == 2, "the same corpse opened again adds nothing")
+  slots[1].src[1] = "Creature-0-1-2-3-299-0000BBBB"; slots[3].src = nil
+  UnitGUID = function() return nil end
+  fire("LOOT_OPENED")
+  check(wolf.n == 2 and wolf.items[2589].c == 2 and wolf.items[4865].c == 1, "a second wolf: two corpses, linen from both")
+  GetNumLootItems, GetLootSlotInfo, GetLootSlotLink, GetLootSourceInfo, UnitGUID, UnitIsDead = nil, nil, nil, nil, oldGUID, oldDead
+end
+
+-- talents: RestedXP's guide for your class against what you have
+do
+  local have = { ["1:1:2"] = 2 }
+  C_SpecializationInfo = { GetTalentInfo = function(q) return { rank = have[q.specializationIndex .. ":" .. q.tier .. ":" .. q.column] or 0, name = "Talent " .. q.tier .. q.column } end }
+  local oldData = ns.TalentData
+  ns.TalentData = { WARRIOR = {
+    { name = "Arms (Survival) 10-30", min = 10, max = 30, hc = true, order = 1, picks = { { 10, 1, 1, 2, 1, "Deflection (Rank 1)" } } },
+    { name = "Arms 10-30", min = 10, max = 30, hc = false, order = 4, picks = {
+      { 10, 1, 1, 2, 1, "Deflection (Rank 1)" }, { 11, 1, 1, 2, 2, "Deflection (Rank 2)" }, { 12, 1, 1, 2, 3, "Deflection (Rank 3)" },
+      { 13, 1, 2, 1, 1, "Improved Rend (Rank 1)" }, { 30, 1, 3, 1, 1, "Late (Rank 1)" } } },
+  } }
+  W.level = 13
+  local list, g = ns.Talents.pending()
+  check(g and g.name == "Arms 10-30", "not hardcore: the plain guide: " .. tostring(g and g.name))
+  check(#list == 2 and list[1].rank == 3 and list[2].name == "Talent 21", "pending: what you lack up to your level, not later picks")
+  check(ns.Talents.line():find("Talent 12 3", 1, true) and ns.Talents.line():find("+1 more", 1, true), "the window line")
+  C_GameRules = { IsHardcoreActive = function() return true end }
+  check(select(2, ns.Talents.pending()).name == "Arms (Survival) 10-30", "a hardcore character gets the Survival guide")
+  C_GameRules = nil
+  zug("talents Arms (Survival) 10-30")
+  check(ZugzugLevelerCharDB.talentGuide == "Arms (Survival) 10-30" and select(2, ns.Talents.pending()).hc, "/zug talents <name> picks one")
+  zug("talents auto"); check(not ZugzugLevelerCharDB.talentGuide, "/zug talents auto")
+  have["1:1:2"], have["1:2:1"] = 3, 1
+  check(#ns.Talents.pending() == 0 and not ns.Talents.line(), "on plan: nothing shown")
+  ns.TalentData, C_SpecializationInfo, W.level = oldData, nil, 5
+end
+
+-- party play: your place on the route, shared with the group
+do
+  local sent = {}
+  C_ChatInfo = { SendAddonMessage = function(p, m, ch) sent[#sent + 1] = { p, m, ch } end, RegisterAddonMessagePrefix = function() end }
+  IsInGroup = function() return true end
+  zug("route use coach test")
+  ns.Party.send(true)
+  local last = sent[#sent]
+  check(last and last[1] == "ZUGZUG" and last[3] == "PARTY" and last[2]:find("^1|coach test|%d+|5|"), "your line goes to the party: " .. tostring(last and last[2]))
+  local i = ns.Engine.index()
+  fire("CHAT_MSG_ADDON", "ZUGZUG", ("1|coach test|%d|5|6|0|802|2|6"):format(i + 2), "PARTY", "Buddy-Realm")
+  fire("CHAT_MSG_ADDON", "ZUGZUG", "1|coach test|1|5|6|0|0||", "PARTY", "Tester-Realm") -- yourself: ignored
+  fire("CHAT_MSG_ADDON", "OTHER", "1|x|1|1|1|0|0||", "PARTY", "Stranger")
+  local rows = table.concat(ns.Party.rows(), "\n")
+  check(rows:find("Buddy", 1, true) and rows:find("2 steps ahead", 1, true) and rows:find("2/6", 1, true), "a party member: how far ahead, and their progress: " .. rows)
+  check(not rows:find("Tester", 1, true) and not rows:find("Stranger", 1, true), "not yourself, not other addons")
+  check(table.concat(ns.UI.lines(), "\n"):find("Buddy", 1, true), "they show in the window")
+  check(not (ZugzugLevelerCharDB.party or ZugzugLevelerDB.mates), "names are not saved")
+  zug("party off"); check(#ns.Party.rows() == 0, "/zug party off")
+  zug("party on")
+  W.gt = W.gt + 200
+  check(#ns.Party.rows() == 0, "a party member gone quiet drops off")
+  C_ChatInfo, IsInGroup = nil, nil
+  zug("route off")
+end
+
+-- objective places for the quests in your log (AllTheThings' obj)
+do
+  local oldDB, oldLog = ns.QuestDB, ZugzugLevelerCharDB.questLog
+  ns.QuestDB = { [901] = { obj = { { 1429, 0.30, 0.40, crs = { 299 } }, { crs = { 300 } } } }, [902] = { obj = { { 1429, 0.6, 0.6 } } } }
+  ZugzugLevelerCharDB.questLog = { { q = 901, done = false }, { q = 902, done = true } }
+  local objs = ns.MapPath.objectives()
+  check(#objs == 1 and objs[1].q == 901 and math.abs(objs[1].wx - 300) < 1e-6, "objective places: unfinished quests, the ones with coordinates")
+  ns.QuestDB, ZugzugLevelerCharDB.questLog = oldDB, oldLog
+end
+
+-- a regenerated route: your step is found again by what it is
+do
+  ns.Route.Register({ name = "rebase test", steps = { { act = "goto", text = "A", map = 1429, x = 0.1, y = 0.1 },
+    { act = "goto", text = "B", map = 1429, x = 0.2, y = 0.2 }, { act = "goto", text = "C", map = 1429, x = 0.3, y = 0.3 } } })
+  zug("route use rebase test"); zug("step 3")
+  check(ZugzugLevelerCharDB.stepKey == "goto||C|", "the step you are on is remembered: " .. tostring(ZugzugLevelerCharDB.stepKey))
+  ns.Route.Register({ name = "rebase test", steps = { { act = "goto", text = "A", map = 1429, x = 0.1, y = 0.1 },
+    { act = "goto", text = "new", mode = "hc", map = 1429, x = 0.15, y = 0.15 },
+    { act = "goto", text = "B", map = 1429, x = 0.2, y = 0.2 }, { act = "goto", text = "C", map = 1429, x = 0.3, y = 0.3 } } })
+  ns.Engine.rebase(ZugzugLevelerCharDB, ns.Route.Get("rebase test"))
+  check(ZugzugLevelerCharDB.step == 4 and ZugzugLevelerCharDB.sticky[3] and not ZugzugLevelerCharDB.sticky[4], "a step added before yours: still on C, now step 4")
+  zug("route off")
+end
+
+-- the talking peon beside the window (Peon.lua)
+do
+  local pf = _G.ZugzugLevelerPeon
+  check(pf and _G.ZugzugLevelerPeonModel and _G.ZugzugLevelerPeonSays, "the peon's portrait, model and speech panel")
+  check(not pf:IsShown() and ns.Peon.last == nil, "off by default: hidden, and he said nothing")
+  zug("peon")
+  check(pf:IsShown(), "/zug peon turns him on")
+  local played = {}
+  PlaySoundFile = function(path, channel) played[#played + 1] = { path, channel }; return true, #played end
+  StopSound = function() end
+  zug("pause"); zug("resume")
+  check(ns.Peon.last == "Back to work!", "he says so when a pause ends: " .. tostring(ns.Peon.last))
+  local last = played[#played]
+  check(last and last[2] == "Dialog" and last[1] == "Interface\\AddOns\\ZugzugLeveler\\media\\voice\\" .. ns.PeonVoice["Back to work!"] .. ".ogg", "and out loud, his own clip on the Dialog channel")
+  zug("pause"); check(ns.Peon.last == "Break. Me wait.", "and when it began"); zug("resume")
+  local n = #played
+  fire("PLAYER_LEVEL_UP", 17)
+  check(ns.Peon.last == "Zug zug! Level 17!" and played[n + 1] and played[n + 1][1]:find(ns.PeonVoice["Zug zug! Level up!"], 1, true), "words of its own on screen, the fixed line out loud")
+  ns.Peon.say("words with no clip")
+  check(#played == n + 1, "no clip for other words: quiet")
+  for _ = 1, 4 do pf.scripts.OnClick(pf) end
+  check(ns.Peon.last == ns.Peon.ANNOYED[1], "poked four times: " .. tostring(ns.Peon.last))
+  pf.scripts.OnClick(pf); pf.scripts.OnClick(pf); pf.scripts.OnClick(pf)
+  check(ns.Peon.last == "Me not that kind of orc!", "and then the line everyone remembers")
+  W.gt = W.gt + 10; pf.scripts.OnClick(pf)
+  local ready = false
+  for _, l in ipairs(ns.Peon.READY) do if l == ns.Peon.last then ready = true end end
+  check(ready, "after a rest, a ready line again: " .. tostring(ns.Peon.last))
+  W.gt = W.gt + 30; fire("QUEST_TURNED_IN", 999, 0, 0) -- one "work complete" per 20 s
+  check(ns.Peon.last == "Work complete.", "a turn-in: work complete")
+  PlaySoundFile, StopSound = nil, nil
+  zug("peon off")
+  check(not pf:IsShown(), "/zug peon off hides him")
+  ns.Peon.say("unheard")
+  check(ns.Peon.last ~= "unheard", "and he stays quiet")
+  zug("peon on")
+  check(pf:IsShown(), "/zug peon on brings him back")
+end
+
+-- a new character with both a questing and an AoE route is asked which
+do
+  local asked2 = {}
+  StaticPopupDialogs = {}
+  StaticPopup_Show = function(which, text) asked2[#asked2 + 1] = { text = text, dlg = StaticPopupDialogs[which] } end
+  local cls = select(1, UnitClass("player"))
+  local base = "RXP Human " .. cls
+  ns.Route.Register({ name = base, steps = { { act = "goto", text = "Q", map = 1429, x = 0.1, y = 0.1 } } })
+  ns.Route.Register({ name = base .. " AoE", steps = { { act = "goto", text = "A", map = 1429, x = 0.1, y = 0.1 } } })
+  ZugzugLevelerCharDB.route, ZugzugLevelerCharDB.offeredRoute = nil, nil
+  fire("PLAYER_ENTERING_WORLD")
+  local q
+  for _, a in ipairs(asked2) do if a.text:find("two for you", 1, true) then q = a end end
+  check(q and q.dlg.button1 == "Questing" and q.dlg.button2 == "AoE", "questing or AoE: asked which")
+  if q then q.dlg.OnCancel(nil, nil, "clicked") end
+  check(ZugzugLevelerCharDB.route == base .. " AoE", "the second button follows the AoE route")
+  StaticPopupDialogs, StaticPopup_Show = nil, nil
+  zug("route off")
+end
 
 -- live updates: the game's chat log, asked for, never silent
 local logging = false
 LoggingChat = function(on) if on ~= nil then logging = on end return logging end
 mark = #W.printed
-lev("live on")
-check(logging and ZugzugLevelerDB.live == true and printed("WoWChatLog.txt", mark), "/lev live on turns the game's chat log on and says where it goes")
-lev("live check")
-check(printed("live check " .. W.t, mark), "/lev live check prints the marker the companion looks for")
-lev("live off")
-check(not logging and ZugzugLevelerDB.live == false, "/lev live off")
+zug("live on")
+check(logging and ZugzugLevelerDB.live == true and printed("WoWChatLog.txt", mark), "/zug live on turns the game's chat log on and says where it goes")
+zug("live check")
+check(printed("live check " .. W.t, mark), "/zug live check prints the marker the companion looks for")
+zug("live off")
+check(not logging and ZugzugLevelerDB.live == false, "/zug live off")
 local reloaded = false
 ReloadUI = function() reloaded = true end
-lev("sync")
-check(reloaded and ZugzugLevelerCharDB.syncAt == W.t, "/lev sync saves now (a UI reload)")
+zug("sync")
+check(reloaded and ZugzugLevelerCharDB.syncAt == W.t, "/zug sync saves now (a UI reload)")
 LoggingChat, ReloadUI = nil, nil
 
 -- buttons: quest item + target macro, never touched in combat
@@ -815,7 +1104,7 @@ ns.Route.Register({ name = "button test", steps = {
 } })
 W.log = { [701] = { complete = false, objs = { { finished = false } } } }
 W.turnedIn, W.bagItems = {}, { [5185] = 1 }
-lev("route use button test")
+zug("route use button test")
 check(item.shown and attr(item, "type") == "item" and attr(item, "item") == "item:5185", "item button set to the step's quest item")
 check(tgt.shown and attr(tgt, "type") == "macro", "target button is a macro")
 check(attr(tgt, "macrotext") == "/targetexact Gnoll Brute\n/targetexact Gnoll", "macro targets the mobs, first name last so it wins")
@@ -834,19 +1123,19 @@ ns.Route.Register({ name = "split test", steps = {
   { act = "accept", q = 801 }, { act = "accept", q = 802 }, { act = "note", text = "end" },
 } })
 W.log, W.turnedIn = {}, {}
-lev("route use split test")
+zug("route use split test")
 play(30); accept(801)
 local bs = ZugzugLevelerDB.best["split test"].seg
 check(bs[1] and math.abs(bs[1] - 30) < 2, "step 1 timed ~30s: " .. tostring(bs[1]))
-lev("route use split test")                      -- 801 already accepted: fast-forward
+zug("route use split test")                      -- 801 already accepted: fast-forward
 check(math.abs(bs[1] - 30) < 2, "fast-forwarded step does not set a fake best")
-W.log = {}; lev("route use split test")
+W.log = {}; zug("route use split test")
 play(10); accept(801)
 check(bs[1] < 12, "faster run sets a new best")
 check(S.line():find("-0:2", 1, true) and S.line():find("1 gold", 1, true), "line shows time gained and the gold: " .. tostring(S.line()))
 
 -- downtime: one state per tick, secret aura names ignored
-lev("downtime reset")
+zug("downtime reset")
 W.map, W.x, W.y = 1429, 0.2, 0.2
 W.combat = true; play(15)
 W.combat, W.drinking = false, true; play(9)
@@ -864,7 +1153,7 @@ local P = W.providers[1]
 check(P, "data provider added to the world map")
 local canvas = stub(); canvas.size = 1000
 P.owningMap = { GetMapID = function() return 1429 end, GetCanvas = function() return canvas end, GetCanvasScale = function() return 1 end }
-lev("route use obj test")
+zug("route use obj test")
 W.log = { [301] = { complete = false, objs = { { finished = true }, { finished = false } } } }
 W.map, W.x, W.y = 1429, 0.1, 0.1
 P:RefreshAllData()
@@ -880,9 +1169,9 @@ end
 local steps, loop = ns.MapPath.points()
 check(#steps == 2 and #loop == 2, "points: the 2 upcoming steps with a place, and the 2-point loop")
 check(shownLines() == 4, "world map: you->step1->step2 (2 lines) + closed loop (2 lines) = " .. shownLines())
-lev("map off")
-check(shownLines() == 0, "/lev map off clears the lines")
-lev("map on")
+zug("map off")
+check(shownLines() == 0, "/zug map off clears the lines")
+zug("map on")
 
 -- minimap placement math
 local MP = ns.MapPath
@@ -898,7 +1187,7 @@ check(edge, "far point pinned to the rim")
 -- optimizer: Michael's case. In the field, the route says "walk to town and
 -- train", then come back to the field for the next quest, then town again.
 local O = ns.Optimizer
-lev("optimize suggest")
+zug("optimize suggest")
 ns.Route.Register({ name = "opt test", steps = {
   { act = "complete", q = 901, obj = 1, map = 1429, cont = 0, wx = 900, wy = 0 },   -- 1 field
   { act = "train", text = "Train Fireball", map = 1429, cont = 0, wx = 0, wy = 0 },  -- 2 town
@@ -911,7 +1200,7 @@ ns.Route.Register({ name = "opt test", steps = {
 W.log = { [901] = { complete = false, objs = { { finished = false } } }, [902] = { complete = false, objs = { { finished = false } } } }
 W.turnedIn, W.level = {}, 5
 W.map, W.x, W.y = 1429, 0.9, 0.0                 -- standing in the field
-lev("route use opt test")
+zug("route use opt test")
 local p = O.plan()
 check(p and #p.idx == 5 and p.after == 6, "window: the 5 steps up to the level gate")
 -- route: 900->0 (train) ->910 ->0 ->5 = 0+900+910+910+5 = 2725; best: 1,3,5,4,2 = 0+10+905+5+0 = 920
@@ -922,7 +1211,7 @@ for k, j in ipairs(p.idx) do pos[j] = k end
 check(pos[1] < pos[4] and pos[3] < pos[5], "never turns in before the quest is done")
 check(O.pending and table.concat(ns.UI.lines(), "\n"):find("shorter order saves", 1, true), "suggested, not forced")
 check(ns.Engine.index() == 1, "the route is unchanged until you say so")
-lev("optimize")
+zug("optimize")
 W.log[901].objs[1].finished = true; W.log[901].complete = true; fire("QUEST_LOG_UPDATE")
 check(ns.Engine.index() == 3, "after the first field quest: the other field quest, not the trainer")
 check(table.concat(ns.UI.lines(), "\n"):find("optimized order", 1, true), "window says the order is optimized")
@@ -937,7 +1226,7 @@ check(ns.cdb.plan == nil and ns.Engine.index() == 6, "plan done: back on the rou
 
 -- auto mode: re-plans from where you are as you move, keeps the arrow on the
 -- shortest order, never yanks you out of the area you are working in
-lev("optimize auto")
+zug("optimize auto")
 ns.Route.Register({ name = "auto test", steps = {
   { act = "complete", q = 911, obj = 1, map = 1429, cont = 0, wx = 800, wy = 0 },   -- 1 east
   { act = "complete", q = 912, obj = 1, map = 1429, cont = 0, wx = 0, wy = 800 },   -- 2 north
@@ -949,7 +1238,7 @@ for _, q in ipairs({ 911, 912, 913 }) do W.log[q] = { complete = false, objs = {
 W.turnedIn = {}
 -- (exactly 0,0 is "no position" to Compat.mapPos, as the game reports in instances)
 W.map, W.x, W.y = 1429, 0.005, 0.005
-lev("route use auto test")
+zug("route use auto test")
 check(ns.Engine.index() == 3, "auto: from (0,0) the near quest comes first, without asking: " .. ns.Engine.index())
 local steps0 = 0
 ns.On("SL_STEP", function() steps0 = steps0 + 1 end)
@@ -966,7 +1255,7 @@ check(ns.Engine.index() == 2, "in a work area: no switching mid-objective")
 ns.Way.mode = realMode
 for _ = 1, 4 do W.gt = W.gt + 0.5; tick(1) end
 check(ns.Engine.index() == 1, "out of it: the east quest you are standing next to: " .. ns.Engine.index())
-lev("optimize clear")
+zug("optimize clear")
 check(ns.db.optimize == "auto" and ns.cdb.plan == nil, "clear does NOT change the setting (that was the bug)")
 check(ns.Engine.index() == 1, "clear: the guide's order")
 W.x, W.y = 0.005, 0.7                                 -- walk north again: auto would switch...
@@ -977,14 +1266,14 @@ for _, q in ipairs({ 911, 912, 913 }) do W.log[q].objs[1].finished = true; W.log
 fire("QUEST_LOG_UPDATE")
 for _ = 1, 4 do W.gt = W.gt + 0.5; tick(1) end
 check(ns.Optimizer.held == nil, "past the stretch: auto is back by itself")
-lev("optimize suggest")
+zug("optimize suggest")
 
 -- quest log mode: no guide, the game's own quest positions + quest givers
 C_QuestLine = {
   RequestQuestLinesForMap = function() end,
   GetAvailableQuestLines = function(map) return (W.lines or {})[map] or {} end,
 }
-lev("optimize auto")
+zug("optimize auto")
 W.log = {
   [1001] = { complete = false, title = "Bat Wings", objs = { { text = "Bat wing: 2/6", finished = false } } },
   [1002] = { complete = true, title = "Done Thing", objs = { { text = "x: 1/1", finished = true } } },
@@ -998,7 +1287,7 @@ W.lines = { [1429] = {
   { questID = 1005, questName = "Grey Quest", x = 0.13, y = 0.0, isHidden = true },
 } }
 W.map, W.x, W.y = 1429, 0.05, 0.01
-lev("questlog")
+zug("questlog")
 local QLr = ns.Engine.route()
 local acts = {}
 for _, s in ipairs(QLr.steps) do acts[#acts + 1] = s.act .. s.q end
@@ -1020,9 +1309,9 @@ W.level = 6; fire("PLAYER_LEVEL_UP", 6); W.level = 5
 local back = false
 for _, s in ipairs(ns.Engine.route().steps) do if s.q == cur.q then back = true end end
 check(back, "level-up brings it back")
-lev("ql debug")
+zug("ql debug")
 check(W.printed[#W.printed - 1]:find("placed", 1, true) or W.printed[#W.printed]:find("no position", 1, true), "ql debug reports")
-lev("optimize suggest")
+zug("optimize suggest")
 
 -- flights: learned at the flight master, measured, used when quicker
 function GetTaxiMapID() return 1429 end
@@ -1043,7 +1332,7 @@ check(math.abs(short - 100) < 1e-6, "short trip: still walks")
 ns.Route.Register({ name = "fly test", steps = { { act = "complete", q = 1201, obj = 1, map = 1429, cont = 0, wx = 980, wy = 980 } } })
 W.log = { [1201] = { complete = false, objs = { { finished = false } } } }
 W.map, W.x, W.y = 1429, 0.03, 0.03
-lev("route use fly test")
+zug("route use fly test")
 check((ns.Way.current().text or ""):find("Fly", 1, true) and ns.Way.current().wx == 20, "arrow: to the Brill flight master, 'Fly Brill -> Far Camp'")
 -- a real flight measures the speed
 W.gt = W.gt + 0.5; tick(1)                               -- standing at the flight master
@@ -1051,7 +1340,7 @@ W.taxi = true; W.gt = W.gt + 0.5; tick(1)                -- take off
 W.gt = W.gt + 40; W.x, W.y = 0.97, 0.97; tick(1)         -- flying
 W.taxi = false; W.gt = W.gt + 0.5; tick(1)               -- landed, 41 s after the last ground sample
 check(ns.Flight.measured() and math.abs(ns.Flight.fly() - math.sqrt(2) * 940 / 41) < 0.5, ("flight speed measured: %.1f yd/s"):format(ns.Flight.fly()))
-lev("flight")
+zug("flight")
 ZugzugLevelerCharDB.flights = nil
 
 -- danger warnings (RXP's data, here a small stand-in)
@@ -1064,7 +1353,7 @@ ns.DangerData = { Alliance = {
 } }
 ns.Danger.reset()
 W.level, W.map, W.x, W.y = 10, 1429, 0.53, 0.50          -- 30 yd from Hogger, 10 from the weak wolf
-lev("danger on")
+zug("danger on")
 ns.Danger.update()
 check(ns.Danger.near[1] and ns.Danger.near[1].e.n == "Hogger", "Hogger is the closest threat")
 local names = {}
@@ -1077,16 +1366,42 @@ W.x, W.y = 0.50, 0.62                                     -- 20 yd beside the mi
 ns.Danger.update()
 check(ns.Danger.near[1] and ns.Danger.near[1].e.n == "Patrol Gnoll" and math.abs(ns.Danger.near[1].d - 20) < 1e-6, "patrol path: distance to the nearest point on it")
 check(table.concat(ns.Danger.rows(), "\n"):find("Patrol Gnoll", 1, true), "window row")
-lev("danger off"); ns.Danger.update()
-check(#ns.Danger.near == 0, "/lev danger off")
-lev("danger on")
+zug("danger off"); ns.Danger.update()
+check(#ns.Danger.near == 0, "/zug danger off")
+zug("danger on")
 ns.DangerData = realData; ns.Danger.reset()
 
 -- options panel: Blizzard's Settings, proxy settings over our own db
-check(W.addonCategory and W.addonCategory.name == "zugzugleveler", "registered under Options > AddOns")
+check(W.addonCategory and W.addonCategory.name == "zugzug_leveler", "registered under Options > AddOns")
 local nCheck, nDrop = 0, 0
 for _, s in pairs(W.settings) do if s.options then nDrop = nDrop + 1 else nCheck = nCheck + 1 end end
-check(nCheck == 10 and nDrop == 2, ("10 toggles and 2 dropdowns (%d, %d)"):format(nCheck, nDrop))
+check(nCheck == 26 and nDrop == 3, ("26 toggles and 3 dropdowns (%d, %d)"):format(nCheck, nDrop))
+-- play styles: hardcore / self-found steps, from the game or the panel
+check(ns.Engine.applies({ act = "goto", mode = "sc" }) and not ns.Engine.applies({ act = "goto", mode = "hc" }), "not hardcore: softcore steps in, hardcore ones out")
+C_GameRules = { IsHardcoreActive = function() return true end }
+check(ns.Engine.applies({ act = "goto", mode = "hc" }) and not ns.Engine.applies({ act = "goto", mode = "sc" }), "the game says hardcore: hardcore steps in")
+W.settings.ZUGZUG_HARDCORE.set(false)
+check(not ns.Engine.applies({ act = "goto", mode = "hc" }), "the panel overrides it")
+check(not ns.Engine.applies({ act = "goto", mode = "ssf" }) and ns.Engine.applies({ act = "goto", mode = "ah" }), "not self-found: auction-house steps in")
+W.settings.ZUGZUG_SSF.set(true)
+check(ns.Engine.applies({ act = "goto", mode = "ssf" }) and not ns.Engine.applies({ act = "goto", mode = "ah" }) and not ns.Engine.applies({ act = "goto", mode = "hc,ssf" }), "self-found: its steps in; both marks need both")
+ZugzugLevelerCharDB.hardcore, ZugzugLevelerCharDB.ssf, C_GameRules = nil, nil, nil
+-- the goal, the pause and the route's step kinds, from the panel
+local goalSet = W.settings.ZUGZUG_GOAL
+goalSet.set(3); check(ns.db.goal == "complete" and goalSet.get() == 3, "goal dropdown: Completion")
+goalSet.set(2); check(ns.Route.goal() == "speed", "goal dropdown: Fastest")
+local cook = W.settings.ZUGZUG_KIND_COOKING
+check(cook and cook.get() == false, "fastest leaves cooking out, and the box shows it")
+cook.set(true)
+check(not ns.Route.leftOut({ act = "train", text = "Train Cooking" }) and ns.Route.leftOut({ act = "train", text = "Train First Aid" }),
+  "ticking cooking keeps it, the goal's other kinds stay out")
+ns.RoutePrefs = { skip = { cooking = true }, at = ZugzugLevelerDB.skipAt + 5 }
+check(ns.Route.leftOut({ act = "train", text = "Train Cooking" }), "a later choice on the page wins")
+ns.RoutePrefs, ZugzugLevelerDB.skip, ZugzugLevelerDB.skipAt, ZugzugLevelerDB.goal, ZugzugLevelerDB.goalAt = nil, nil, nil, nil, nil
+W.settings.ZUGZUG_PAUSE.set(true); check(ns.Pause.on(), "pause from the panel")
+W.settings.ZUGZUG_PAUSE.set(false); check(not ns.Pause.on(), "and resume")
+W.settings.ZUGZUG_COACH.set(false); check(ZugzugLevelerDB.coach == false, "coach off from the panel")
+W.settings.ZUGZUG_COACH.set(true)
 local arrowSet = W.settings.SLOPLEV_ARROW
 arrowSet.set(false)
 check(ns.db.arrow == false and arrowSet.get() == false, "unticking Arrow turns it off")
@@ -1098,8 +1413,8 @@ opt.set(3); check(ns.db.optimize == "off" and opt.get() == 3, "dropdown Off sets
 opt.set(2); check(ns.db.optimize == "suggest", "dropdown Suggest")
 W.settings.SLOPLEV_RELEASE.set(true); check(ns.db.autoRelease == true, "auto-release toggle")
 W.settings.SLOPLEV_RELEASE.set(false)
-lev("options")
-check(W.openedCategory == 77, "/lev options opens the panel")
+zug("options")
+check(W.openedCategory == 77, "/zug options opens the panel")
 
 -- professions: plan step, materials vs bags, trainer, the profession window
 W.profs = { { "Tailoring", 87, 150, 197 }, { "Mining", 40, 75, 186 } }
@@ -1117,9 +1432,9 @@ check(rows:find("Mining|r 40/75  gather Copper Ore", 1, true) and rows:find("Elw
 W.profs[1] = { "Tailoring", 150, 150, 197 }
 rows = table.concat(ns.Prof.lines(), "\n")
 check(rows:find("train the next rank", 1, true), "capped: train reminder")
-lev("prof way")
+zug("prof way")
 local tw = ns.Way.current()
-check(tw and tw.manual and tw.map == 1453, "/lev prof way: the arrow to the Expert tailoring trainer in Stormwind")
+check(tw and tw.manual and tw.map == 1453, "/zug prof way: the arrow to the Expert tailoring trainer in Stormwind")
 SlashCmdList.ZUGZUGLEVELERWAY("clear")
 C_TradeSkillUI = {
   GetFilteredRecipeIDs = function() return { 1, 2, 3, 4 } end,
@@ -1133,7 +1448,13 @@ C_TradeSkillUI = {
 }
 fire("TRADE_SKILL_SHOW")
 check(#ns.Prof.canSkill == 1 and ns.Prof.canSkill[1].name == "Woolen Cape", "window: only learned, skill-giving, makeable recipes")
-check(table.concat(ns.UI.lines(), "\n"):find("skill-ups you can make now", 1, true), "window line in the step window")
+ns.UI.refresh()
+check(not table.concat(ns.UI.lines(), "\n"):find("skill-ups you can make now", 1, true), "professions are not on the Route tab")
+ZugzugLevelerDB.uiTab = "prof"; ns.UI.refresh()
+check(table.concat(ns.UI.lines(), "\n"):find("skill-ups you can make now", 1, true), "they are on the Prof tab")
+ZugzugLevelerDB.uiTab = "stats"; ns.UI.refresh()
+check(table.concat(ns.UI.lines(), "\n"):find("session", 1, true), "the session numbers are on the Stats tab")
+ZugzugLevelerDB.uiTab = nil; ns.UI.refresh()
 fire("TRADE_SKILL_CLOSE")
 check(#ns.Prof.canSkill == 0, "cleared when the profession window closes")
 W.profs = {}
@@ -1229,15 +1550,21 @@ do
   end
   function GetNumQuestRewards() return 1 end
   function GetTitleText() return "Wanted: Bones" end
+  function GetQuestText() return "Bones everywhere. Bring me some." end
+  function GetObjectiveText() return "Bring 8 Bones to Ana." end
   local oldAccept = AcceptQuest
   AcceptQuest = function() seenAtAccept = ZugzugLevelerDB.quests and ZugzugLevelerDB.quests[555]; W.qf.closed = true; called("AcceptQuest", W.qf.id) end
   W.qf.id, W.qf.choices = 555, 3
   ns.Route.Register({ name = "reward test", steps = { { act = "accept", q = 555 } } })
-  lev("route use reward test")
+  zug("route use reward test")
   fire("QUEST_DETAIL")
   local qr = ZugzugLevelerDB.quests and ZugzugLevelerDB.quests[555]
   check(qr and #qr.choice == 2 and qr.choice[1] == 8 and qr.choice[2] == 9 and qr.reward[1] == 6, "quest rewards recorded, equippable only")
   check(seenAtAccept ~= nil, "rewards are read before Assist accepts the quest")
+  local qt = ZugzugLevelerDB.questText and ZugzugLevelerDB.questText[555]
+  check(qt and qt.ask == "Bring 8 Bones to Ana." and qt.desc:find("Bones everywhere", 1, true) and qt.map == W.map,
+    "the quest's own words, kept when it is offered, with where")
+  GetQuestText, GetObjectiveText = nil, nil
   check(ZugzugLevelerDB.items[9] and ZugzugLevelerDB.items[9].name == "Ring of Secrets" and ZugzugLevelerDB.items[9].req == 5, "reward items kept in the catalogue")
   GetQuestItemLink, AcceptQuest, W.qf.closed, W.qf.choices, W.qf.id = oldLink, oldAccept, nil, 0, nil
   -- the quest log, with objectives
@@ -1289,20 +1616,20 @@ for trial = 1, 5 do
   perm({}, {})
   check(math.abs(best - brute) < 1e-6, ("trial %d: solver %.1f == brute force %.1f"):format(trial, best, brute))
 end
-lev("optimize clear")
+zug("optimize clear")
 
 -- UI renders without errors
 ns.UI.refresh()
-lev("export")
+zug("export")
 local before = #W.printed
-lev("route use rxp test"); lev("why")
+zug("route use rxp test"); zug("why")
 local said = table.concat(W.printed, "\n", before + 1)
-check(said:find("Step %d+ of %d+:"), "/lev why explains the step")
-before = #W.printed; lev("why debug")
+check(said:find("Step %d+ of %d+:"), "/zug why explains the step")
+before = #W.printed; zug("why debug")
 said = table.concat(W.printed, "\n", before + 1)
-check(said:find("step %d+:"), "/lev why debug reports what the engine sees")
-lev("runs")
-lev("help")
+check(said:find("step %d+:"), "/zug why debug reports what the engine sees")
+zug("runs")
+zug("help")
 
 -- optional: write ZugzugLevelerDB the way WoW writes SavedVariables
 -- (["key"] = value, array items followed by "-- [n]"), for tools/routes.py

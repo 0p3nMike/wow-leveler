@@ -1,4 +1,4 @@
-/* zugzugleveler -- the field ledger.
+/* zugzug_leveler -- the companion page.
    One face (BigBlueTerm437, the house terminal font), kept on its native
    16px pixel grid: 16 for everything, 32 and 48 for the few display numbers.
    Colour roles (set from the chosen theme by app.js; these defaults are the
@@ -81,8 +81,8 @@ button.ghost, .btn {
 .btn.primary { background: var(--ink); color: var(--paper); }
 .btn.primary:hover { background: var(--graphite); }
 
-main { padding: 32px; max-width: 1180px; }
-.foot { padding: 32px; max-width: 1180px; color: var(--graphite); border-top: 1px solid var(--line); margin-top: 32px; }
+main { padding: 32px; max-width: 1680px; }
+.foot { padding: 16px 32px; max-width: 1680px; color: var(--graphite); border-top: 1px solid var(--line); margin-top: 32px; }
 .foot p { margin: 0 0 8px; max-width: 80ch; }
 
 /* ---- the hero: the XP bar, as the game draws it */
@@ -278,3 +278,214 @@ a.q0, a.q2, a.q3, a.q4, a.q5 { text-decoration-color: currentColor; }
 .settings[hidden] { display: none; }
 .settings label { display: block; margin: 8px 0; max-width: 80ch; }
 .model3d.noart code { background: #2a2f36; color: #fff; padding: 2px 8px; }
+/* the goal: two choices, side by side */
+.goals { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 8px 0 16px; max-width: 880px; }
+.goal { text-align: left; font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--line); padding: 12px 16px; cursor: pointer; display: grid; gap: 4px; }
+.goal b { font: 22px/28px var(--display); }
+.goal span { color: var(--graphite); }
+.goal.on { border: 2px solid var(--accent); padding: 11px 15px; }
+.goal:hover { border-color: var(--ink); }
+.money { max-width: 980px; }
+.money table { margin-bottom: 16px; }
+.paused { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid #73ade8; background: rgba(115, 173, 232, 0.08); }
+.paused .mark { color: #73ade8; letter-spacing: -2px; }
+
+/* ---- the helper (peon.js): a Warcraft III unit portrait, gold arch on night blue.
+   It keeps its own palette in every theme: it is the game's frame, not the ledger's. */
+.brand .mark { width: 36px; height: 36px; vertical-align: -6px; margin-right: 10px; border-radius: 50%; background: #0c1f5c; }
+.helper {
+  position: fixed; right: 16px; bottom: 16px; z-index: 20; display: flex; align-items: flex-end; gap: 12px;
+  --gold: #d8b04a; --gold-hi: #f6e08c; --gold-lo: #5c3f0c; --night: #0a1a52;
+}
+.helper-body { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 8px 6px; background: #26231f; border: 1px solid #000; box-shadow: 0 2px 10px rgba(0,0,0,.45); }
+.helper-frame {
+  position: relative; width: 132px; height: 152px; padding: 0; border: 0; cursor: pointer; overflow: hidden;
+  border-radius: 66px 66px 3px 3px / 56px 56px 3px 3px;
+  background: radial-gradient(ellipse at 50% 38%, #2350c8 0%, #12308c 45%, var(--night) 80%);
+  box-shadow: 0 0 0 2px var(--gold-lo), 0 0 0 4px var(--gold), 0 0 0 5px var(--gold-hi), 0 0 0 7px var(--gold-lo), inset 0 0 0 2px rgba(246,224,140,.5), inset 0 -14px 24px rgba(0,0,0,.55);
+}
+.helper-frame:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 6px; }
+.helper-frame canvas { width: 100%; height: 100%; display: block; }
+.helper.no3d .helper-frame { background: url(peon/icon.png) center / cover, var(--night); }
+.helper-bars { display: grid; gap: 3px; width: 152px; }
+.helper-bars span {
+  display: block; text-align: center; font: 15px/22px var(--font); white-space: nowrap; background: #000; border: 1px solid #6a5a3a;
+  text-shadow: 1px 1px 0 #000; letter-spacing: .5px;
+}
+.helper-bars .hp { color: #4ee34e; }
+.helper-bars .mp { color: #dfe5f5; }
+.helper-speech {
+  max-width: 300px; margin-bottom: 40px; padding: 10px 14px 12px; color: #f2ead2;
+  background: linear-gradient(#1b1712, #120f0b); border: 2px solid var(--gold); box-shadow: 0 0 0 1px #000, 0 4px 14px rgba(0,0,0,.5);
+  opacity: 0; transform: translateY(6px); transition: opacity .25s, transform .25s; pointer-events: none;
+}
+.helper.speaking .helper-speech { opacity: 1; transform: none; pointer-events: auto; }
+.helper-speech b { display: block; color: var(--gold-hi); font: 18px/22px var(--display); margin-bottom: 4px; }
+.helper-speech p { margin: 0; font: 15px/21px var(--font); min-height: 21px; }
+.helper-speech p { max-height: 40vh; overflow-y: auto; white-space: pre-line; }
+.helper-ask { display: flex; gap: 6px; margin-top: 10px; }
+.helper-ask input { flex: 1; min-width: 0; height: 26px; background: #0d0b08; color: #f2ead2; border: 1px solid #6a5a3a; padding: 0 6px; }
+.helper-ask button { height: 26px; padding: 0 10px; background: #3a2c10; color: var(--gold-hi); border: 1px solid var(--gold); cursor: pointer; }
+.helper-ask button:disabled { opacity: .5; cursor: wait; }
+.helper-fold {
+  position: absolute; right: -6px; top: -10px; width: 22px; height: 22px; padding: 0; line-height: 18px;
+  background: #26231f; color: var(--gold-hi); border: 1px solid var(--gold); cursor: pointer;
+}
+.helper-mute {
+  position: absolute; right: 20px; top: -10px; width: 22px; height: 22px; padding: 0; line-height: 18px;
+  background: #26231f; color: var(--gold-hi); border: 1px solid var(--gold); cursor: pointer;
+}
+.helper-mute[hidden] { display: none; }
+.helper-mute.off { text-decoration: line-through; opacity: .6; }
+.helper.folded .helper-speech { display: none; }
+.helper.folded .helper-body { transform: scale(.7); transform-origin: bottom right; }
+@media (max-width: 720px) {
+  .helper { right: 8px; bottom: 8px; flex-direction: column; align-items: flex-end; }
+  .helper-speech { margin: 0; max-width: calc(100vw - 32px); }
+  .helper-frame { width: 92px; height: 106px; border-radius: 46px 46px 3px 3px / 40px 40px 3px 3px; }
+  .helper-bars { width: 100px; }
+  .helper-bars span { font-size: 14px; line-height: 18px; }
+}
+@media (prefers-reduced-motion: reduce) { .helper-speech { transition: none; } }
+
+/* ---- the three screens ------------------------------------------------- */
+:root { --qd0: #7d7d7d; --qd1: #2e8b2e; --qd2: #9a7b00; --qd3: #c25a14; --qd4: #c62828; }
+
+/* Character: progress | you | gear, professions, details -- the game's character pane */
+.charscreen {
+  display: grid; gap: 32px; align-items: start;
+  grid-template-columns: minmax(300px, 400px) auto minmax(420px, 1fr);
+  grid-template-areas: "left center right";
+}
+.pleft { grid-area: left; } .pright { grid-area: right; } .charcenter { grid-area: center; }
+.charcenter { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.charcenter .charname { text-align: center; margin: 0 0 12px; font-size: 40px; line-height: 44px; max-width: 520px; }
+.charcenter .empty { max-width: 420px; }
+.charcenter .modelnotes { justify-content: center; text-align: center; max-width: 460px; }
+/* the panels either side: a ruled head with their own tabs */
+.panel { min-width: 0; border-top: 2px solid var(--ink); }
+.ptabs { display: flex; gap: 20px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin: 0 0 20px; }
+.ptabs button {
+  font: inherit; color: var(--graphite); background: none; border: 0; padding: 8px 0 8px;
+  cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.ptabs button:hover { color: var(--ink); }
+.ptabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.panel .grid, .panel .grid.prof { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+.panel .card { overflow-x: auto; } /* a wide table scrolls in its panel, not the page */
+.panel .why, .panel .hero { margin-bottom: 28px; }
+.panel h2 { font-size: 24px; line-height: 28px; }
+.pleft .eta { font-size: 24px; line-height: 32px; }
+.pleft .lvl { font-size: 32px; line-height: 32px; }
+.pleft .xpbar { height: 32px; }
+.pright .bistable td { width: auto; }
+/* the paper doll: sockets down both sides of you, the weapons below */
+.sheet.compact { grid-template-columns: 52px 320px 52px; gap: 0 14px; max-width: none; }
+.sheet.compact .side { grid-auto-rows: 52px; }
+.sheet.compact .celltext { display: none; }
+.sheet.compact .cell { justify-content: center; }
+.sheet.compact .hands { gap: 14px; padding-top: 14px; }
+.sheet.compact .hands .cell { width: auto; }
+.sheet.compact .slotart { position: relative; }
+.sheet.compact .cell .up { display: none; }
+
+/* Map & Quests: the map, and the quest log beside it, as the game's Map & Quest Log */
+.worldscreen { display: grid; gap: 24px; align-items: start; grid-template-columns: minmax(0, 1fr) 400px; }
+.worldmap { min-width: 0; }
+.qlog {
+  position: sticky; top: 16px; max-height: calc(100vh - 300px); min-height: 360px; overflow-y: auto; /* stops above the peon */
+  background: var(--raised); border: 1px solid var(--line); padding: 0 16px 16px;
+}
+.qhead { position: sticky; top: 0; background: var(--raised); display: flex; justify-content: space-between; gap: 12px; padding: 12px 0 8px; border-bottom: 1px solid var(--ink); z-index: 1; }
+.qhead b { font: 22px/28px var(--display); font-weight: normal; }
+.qhead span { align-self: end; }
+.qzone h3 { margin: 16px 0 4px; padding: 2px 8px; color: var(--ink); background: var(--wash); }
+.qentry { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0 6px; padding: 6px 0; border-bottom: 1px dotted var(--line); }
+.qentry > :not(.qcheck) { grid-column: 2; }
+.qcheck { grid-row: 1; color: var(--sage); }
+.qtitle { font: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+.qtitle:hover { text-decoration: underline; text-underline-offset: 3px; }
+.qobjs { list-style: none; margin: 0; padding: 0 0 0 8px; color: var(--graphite); }
+.qentry.focus { background: var(--wash); outline: 1px solid var(--accent); outline-offset: 0; }
+.qentry.off .qtitle::after { content: "  not on your route"; color: var(--graphite); }
+.qdetail { padding: 6px 0 2px 8px; }
+.qdetail[hidden] { display: none; }
+.qdetail .qtext { margin: 0 0 6px; }
+.qmore { margin: 4px 0; }
+.qask { margin: 16px 0 0; }
+.qlog .why.ask { margin: 16px 0 0; }
+.qd-grey { color: var(--qd0); } .qd-green { color: var(--qd1); } .qd-yellow { color: var(--qd2); } .qd-orange { color: var(--qd3); } .qd-red { color: var(--qd4); }
+.map svg .focusring { stroke-dasharray: 4 3; }
+
+/* Plan & Runs, About */
+.screenhead { font-size: 32px; line-height: 36px; margin: 8px 0 24px; }
+.screenhead ~ .screenhead { margin-top: 56px; }
+.runs { margin-bottom: 16px; }
+.aboutgrid { display: grid; gap: 40px 56px; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); max-width: 1320px; }
+.about p { max-width: 68ch; margin: 0 0 12px; }
+.about .facts { gap: 4px 24px; }
+.steps-help { margin: 0; padding-left: 24px; max-width: 68ch; }
+.steps-help li { margin: 0 0 8px; }
+.cmds td { border-bottom: 1px dotted var(--line); }
+.cmds td:first-child { width: 55%; padding-right: 24px; }
+.cmds code { white-space: nowrap; line-height: 28px; }
+
+@media (max-width: 1360px) {
+  .charscreen { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "center center" "left right"; }
+}
+@media (max-width: 1100px) {
+  .worldscreen { grid-template-columns: minmax(0, 1fr); }
+  .qlog { position: static; max-height: none; }
+}
+@media (max-width: 860px) {
+  .charscreen { grid-template-columns: minmax(0, 1fr); grid-template-areas: "center" "left" "right"; }
+  .aboutgrid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .sheet.compact { grid-template-columns: 48px minmax(0, 1fr) 48px; grid-template-areas: "left center right" "hands hands hands"; gap: 0 8px; }
+  .sheet.compact .center { margin: 0; justify-self: stretch; min-width: 0; }
+  .sheet.compact .hands { justify-content: center; }
+  .charcenter { align-items: stretch; } /* the sheet takes the full width; the name stays centred */
+  .sheet.compact .model3d { width: 100%; height: 360px; }
+  .sheet.compact .ico.big { width: 40px; height: 40px; }
+  .cmds td:first-child { white-space: normal; }
+}
+.grid.analytics { grid-template-columns: repeat(auto-fit, minmax(620px, 1fr)); } /* charts scale with their box: keep their labels readable */
+@media (max-width: 760px) { .grid.analytics { grid-template-columns: minmax(0, 1fr); } }
+.qlog { overflow-x: hidden; }
+.qentry, .qdetail { min-width: 0; overflow-wrap: anywhere; }
+.qlog select { max-width: 100%; }
+.qlog .row label { display: flex; gap: 8px; align-items: baseline; min-width: 0; max-width: 100%; }
+.qlog .row label { flex: 1 1 100%; }
+.qlog .row select { flex: 1 1 0; width: 0; min-width: 0; }
+
+/* ---- the header: the peon's portrait is the logo; beside him the title card,
+   as tall as he is, the name above and the tabs under it */
+.top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: stretch; gap: 0 28px; padding: 16px 32px 0; }
+.titlecard { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; padding-top: 4px; }
+h1.brand { font: 76px/80px var(--display); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.titlecard .tabs { padding-top: 12px; }
+.top .who { align-self: start; margin-left: 0; justify-content: flex-end; max-width: 560px; padding-top: 8px; }
+/* the peon in the header: not floating any more; his bubble opens under him, over the page */
+.top .helper { position: relative; right: auto; bottom: auto; z-index: 30; display: block; margin-bottom: 12px; align-self: start; }
+.top .helper-speech {
+  position: absolute; left: 0; top: calc(100% + 10px); margin: 0; width: 340px; max-width: calc(100vw - 32px);
+}
+.top .helper-speech::before { content: ""; position: absolute; left: 60px; top: -9px; border: 8px solid transparent; border-top: 0; border-bottom-color: var(--gold); }
+.top .helper.folded .helper-speech { display: none; }
+.top .helper.folded .helper-body { transform: none; }
+.top .helper-fold { right: -8px; top: -8px; }
+.top .helper-mute { right: 18px; top: -8px; }
+@media (max-width: 1100px) {
+  .top { grid-template-columns: auto minmax(0, 1fr); }
+  .top .who { grid-column: 1 / -1; justify-content: flex-start; max-width: none; padding: 8px 0 12px; }
+  h1.brand { font-size: 52px; line-height: 56px; }
+}
+@media (max-width: 720px) {
+  .top { gap: 0 14px; padding: 12px 16px 0; }
+  .top .helper-frame { width: 92px; height: 106px; border-radius: 46px 46px 3px 3px / 40px 40px 3px 3px; }
+  .top .helper-bars { width: 100px; }
+  .top .helper-bars span { font-size: 12px; line-height: 18px; letter-spacing: 0; }
+  h1.brand { font-size: 32px; line-height: 36px; }
+  .titlecard .tabs { gap: 4px 16px; }
+}

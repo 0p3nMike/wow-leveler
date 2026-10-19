@@ -6,7 +6,7 @@ package main
 // OpenAI-style chat endpoint (Ollama's /v1/chat/completions on this PC is the
 // easy one). Nothing leaves this PC. The model gets a menu of facts, not the
 // internet: your character, the route step and the coach's "why" lines (what
-// /lev why says), every quest in your log with its objectives and the quest's
+// /zug why says), every quest in your log with its objectives and the quest's
 // own text (Wowhead's Forever tooltip), and for those quests the giver's place
 // and lead-ins from the quest data (AllTheThings, data/Quests.lua). It is told
 // to answer only from them and to say when they do not cover the question.
@@ -34,7 +34,13 @@ type AskConfig struct {
 	Model string `json:"model"` // e.g. qwen2.5vl:7b
 }
 
-const askSystem = `You help a struggling World of Warcraft: Forever player who is levelling. Answer their question using ONLY the facts below about their character, their quest log and their leveling route. Be short and concrete: what to do, where (give coordinates as "/way x y" when the facts have them), and who to talk to. If the facts do not answer it, say so plainly and suggest the in-game command /lev why or looking at the quest on Wowhead. Never invent quest names, places, coordinates or NPCs.`
+// The peon answers: a Warcraft orc peon's caveman efficiency (few words, no
+// filler, "me" for I), which also keeps a small model's answers short and fast.
+// The facts stay exact: quest names, places, coordinates and NPCs word for word.
+const askSystem = `You are the peon, an orc worker who helps a World of Warcraft: Forever player level up. Talk like a simple orc peon: very short sentences, few words, no filler, no greetings, "me" instead of "I". At most three sentences. But every quest name, place, NPC name and coordinate must be exact, copied from the facts. Answer using ONLY the facts below about their character, their quest log and their leveling route: what to do, where (coordinates as "/way x y" when the facts have them), who to talk to. If the facts do not answer it, say "Me not know." and tell them to type /zug why or look the quest up on Wowhead. Never invent quest names, places, coordinates or NPCs.`
+
+// a peon's answer is short: room for that (and a reasoning model's thinking), no more
+const askMaxTokens = 300
 
 // askFacts: what the model may use, as plain text.
 func (s *Server) askFacts(key string) (string, error) {
@@ -179,7 +185,7 @@ func chat(c *AskConfig, system, question string) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"model":    c.Model,
 		"messages": []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": question}},
-		"stream":   false, "temperature": 0.2,
+		"stream":   false, "temperature": 0.2, "max_tokens": askMaxTokens,
 	})
 	cl := &http.Client{Timeout: 3 * time.Minute}
 	resp, err := cl.Post(c.URL, "application/json", bytes.NewReader(body))

@@ -1,7 +1,7 @@
 -- Coach.lua -- what the route wants, why, and a question when there is a real
 -- choice. For the player who is lost: a step list says WHAT, this says WHY.
 --
---   /lev why   the step in plain words: what to do and who to see, which of
+--   /zug why   the step in plain words: what to do and who to see, which of
 --              RestedXP's guides it belongs to, why it is in another zone and
 --              what is there, whether you are on level, and which of your own
 --              quests the route will not take you to (and what to do then).
@@ -143,17 +143,17 @@ end
 function Coach.why()
   local E = Eng()
   local r, i = E.route(), E.index()
-  if not r then return { "No route. /lev route list shows the guides; /lev questlog follows your own quests." } end
+  if not r then return { "No route. /zug route list shows the guides; /zug questlog follows your own quests." } end
   local s = r.steps[i]
   local out = {}
   if r.dynamic then
     out[#out + 1] = "Quest log mode: the arrow takes your own quests, nearest first."
     local p = ns.cdb.parked
-    if p then out[#out + 1] = ("Your place in %s is kept at step %d: /lev route resume goes back."):format(p.route, p.step or 1) end
+    if p then out[#out + 1] = ("Your place in %s is kept at step %d: /zug route resume goes back."):format(p.route, p.step or 1) end
     if s then out[#out + 1] = "Now: " .. E.describe(s) end
     return out
   end
-  if not s then return { "You have finished this route. /lev questlog keeps going on your own quests." } end
+  if not s then return { "You have finished this route. /zug questlog keeps going on your own quests." } end
 
   out[#out + 1] = ("Step %d of %d: %s"):format(i, #r.steps, E.describe(s))
   -- the step itself
@@ -201,8 +201,8 @@ function Coach.why()
     local pace = level < a and ("you are %d level%s under it: expect harder fights; quests in your log and the level stops catch you up."):format(a - level, a - level == 1 and "" or "s")
       or level > b and "you are past it: the guide's quests will give less XP, so do not linger." or "you are on pace."
     out[#out + 1] = ("This part is RestedXP's %q, for levels %d-%d; %s"):format(sec.name, a, b, pace)
-    -- behind: quests here the route skips are extra XP (the quest data's givers)
-    if level < a and here and ns.QInfo then
+    -- behind, or going for completion: quests here the route skips (the quest data's givers)
+    if (level < a or Route.goal() == "complete") and here and ns.QInfo then
       local covered = {}
       for j = i, #r.steps do if r.steps[j].q then covered[r.steps[j].q] = true end end
       local extra = {}
@@ -210,15 +210,16 @@ function Coach.why()
         if not covered[q] then extra[#extra + 1] = ns.QInfo.title(q, r.steps) end
       end
       if #extra > 0 then
-        out[#out + 1] = ("%d quest%s you can take here %s not on the route: %s. Extra XP while you are under level."):format(
-          #extra, #extra == 1 and "" or "s", #extra == 1 and "is" or "are", list(extra))
+        out[#out + 1] = ("%d quest%s you can take here %s not on the route: %s. %s"):format(
+          #extra, #extra == 1 and "" or "s", #extra == 1 and "is" or "are", list(extra),
+          Route.goal() == "complete" and "You are going for completion: worth doing while you are here." or "Extra XP while you are under level.")
       end
     end
   end
   -- your own quests
   local off = Coach.offRoute(r, i)
   if #off > 0 then
-    out[#out + 1] = ("%d of your quests are not on the route from here (%s). The route will not take you to them; abandon them, do them on the way, or /lev questlog to follow your own quests (your place here is kept)."):format(#off, list(off))
+    out[#out + 1] = ("%d of your quests are not on the route from here (%s). The route will not take you to them; abandon them, do them on the way, or /zug questlog to follow your own quests (your place here is kept)."):format(#off, list(off))
   end
   local aside = #E.deferred()
   if aside > 0 then out[#out + 1] = ("%d step%s set aside: /swap list, /swap back."):format(aside, aside == 1 and " is" or "s are") end
@@ -251,16 +252,64 @@ end
 
 local function snoozed(key) return st.snooze[key] and C.now() < st.snooze[key] end
 
+-- What you are doing right now, read from the game (no model needed, works for
+-- everyone, live): dead / afk / flying from Downtime.lua's state; vendor or
+-- talking from the game's own frames being open; resting (eating, drinking);
+-- grinding at a level stop; hunting in the current "do" step's area; fighting
+-- off it; travelling; idle.
+local function shown(name)
+  local f = _G[name]
+  return f and f.IsShown and C.try(f.IsShown, f) and true or false
+end
+function Coach.activity()
+  if ns.Pause.on() then return "paused" end
+  local d = ns.Downtime and ns.Downtime.now
+  if d == "dead" then return "dead" end
+  if d == "afk" then return "afk" end
+  if d == "flight" then return "flying" end
+  if shown("MerchantFrame") or shown("AuctionHouseFrame") or shown("BankFrame") then return "vendor" end
+  if shown("QuestFrame") or shown("GossipFrame") then return "talking" end
+  if d == "drink" then return "resting" end
+  local state = Coach.state()
+  if state == "grinding" then return "grinding" end
+  local s = Eng().step()
+  if s and s.act == "complete" and ns.Way and ns.Way.mode and ns.Way.mode() == "work" then return "hunting" end
+  if d == "combat" then return "fighting" end
+  if state == "travelling" or d == "move" then return "travelling" end
+  return "idle"
+end
+Coach.PAUSE = { paused = true, afk = true, dead = true, talking = true, vendor = true, flying = true } -- not "stuck" while these
+
 -- A yes/no question: the game's own popup (StaticPopup_Show, with OnAccept /
 -- OnCancel as Blizzard_StaticPopup/StaticPopup.lua calls them), plus the
 -- same question in chat with the command that answers it.
-function Coach.ask(key, text, yes, no, onYes, chatHint)
+-- One question at a time: asked while another of ours is on screen, a question
+-- waits its turn (once per key) and comes up when that one closes. That queue
+-- is also the first-run wizard: goal, route and live updates, one after another.
+local waiting = {}
+local function nextQuestion()
+  local q = table.remove(waiting, 1)
+  if q then Coach.ask(unpack(q, 1, 7)) elseif Coach.onIdle then local f = Coach.onIdle; Coach.onIdle = nil; f() end
+end
+Coach.waiting = waiting -- for tests
+
+function Coach.ask(key, text, yes, no, onYes, chatHint, onNo)
+  if StaticPopup_Visible and C.try(StaticPopup_Visible, "ZUGZUGLEVELER_ASK") then
+    for _, q in ipairs(waiting) do if q[1] == key then return false end end
+    waiting[#waiting + 1] = { key, text, yes, no, onYes, chatHint, onNo }
+    return false
+  end
   st.snooze[key] = C.now() + SNOOZE -- asked: not again for a while, whatever the answer
   C.print("%s  |cff999999(%s)|r", text, chatHint)
+  if ns.Peon then ns.Peon.say(text, "ask", ns.Peon.LINES.ask) end
   if not (StaticPopupDialogs and StaticPopup_Show) then return end
   StaticPopupDialogs.ZUGZUGLEVELER_ASK = {
-    text = "zugzugleveler\n\n%s", button1 = yes, button2 = no,
+    text = "zugzug_leveler\n\n%s", button1 = yes, button2 = no,
     OnAccept = function() onYes() end,
+    -- the second button only (StaticPopup.lua passes reason "clicked"; Escape is not an answer)
+    OnCancel = function(_, _, reason) if onNo and reason == "clicked" then onNo() end end,
+    -- closed, however: the next question that waited (after the popup is gone)
+    OnHide = function() if C_Timer and C_Timer.After then C_Timer.After(0.5, nextQuestion) else nextQuestion() end end,
     timeout = 0, whileDead = false, hideOnEscape = true, preferredIndex = 3,
   }
   C.try(StaticPopup_Show, "ZUGZUGLEVELER_ASK", text)
@@ -310,22 +359,32 @@ function Coach.tick()
   local sig = objSig(s)
   if sig ~= st.sig then st.sig, st.progressAt = sig, now end
   local state = Coach.state()
+  local act = Coach.activity()
+  -- time spent per activity this session, for the page
+  ns.cdb.activity = ns.cdb.activity or {}
+  if st.lastTick then ns.cdb.activity[act] = (ns.cdb.activity[act] or 0) + math.min(now - st.lastTick, 4) end
+  -- away, dead, talking, at a vendor, flying: the "stuck" and "away" clocks wait
+  if Coach.PAUSE[act] and st.lastTick then
+    local dt = math.min(now - st.lastTick, 4)
+    st.progressAt, st.awaySince = st.progressAt + dt, st.awaySince + dt
+  end
+  st.lastTick = now
   local here = C.mapPos()
   if here ~= st.awayMap then st.awayMap, st.awaySince = here, now end
 
-  if not inCombat() then
+  if not inCombat() and not Coach.PAUSE[act] then
     -- stuck: a quest step that has not moved while you are at it
     if state == "questing" and s and s.q and (s.act == "accept" or s.act == "complete" or s.act == "turnin")
       and now - st.progressAt >= STUCK_SECS and near(s) and not snoozed("stuck" .. i) then
       Coach.ask("stuck" .. i, ("%s has not moved for %d minutes. Set it aside and go on with the route? It comes back when you level up."):format(
         plain(E.describe(s)), math.floor((now - st.progressAt) / 60)), "Set it aside", "Keep trying",
-        function() ns.swapCommand("") end, "/swap does the same; /lev why explains the step")
+        function() ns.swapCommand("") end, "/swap does the same; /zug why explains the step")
     -- away: a zone the route has nothing in
     elseif state == "travelling" and here and now - st.awaySince >= AWAY_SECS and not routeHas(here) and not snoozed("away" .. here) then
       Coach.ask("away" .. here, ("The route has nothing in %s: its next step is in %s. Follow your own quests here instead? Your place in the guide is kept."):format(
         zone(here), zone(mapOf(s))), "My quests", "Stay on the route",
-        function() ns.QuestLog.start(); C.print("following your quests; /lev route resume goes back to the guide") end,
-        "/lev questlog does the same; /lev route resume goes back")
+        function() ns.QuestLog.start(); C.print("following your quests; /zug route resume goes back to the guide") end,
+        "/zug questlog does the same; /zug route resume goes back")
     -- back: in quest log mode, where the guide you left continues
     elseif state == "questlog" and ns.cdb.parked and here and not snoozed("back" .. here) then
       local pr = Route.Get(ns.cdb.parked.route)
@@ -333,7 +392,7 @@ function Coach.tick()
       if ps and mapOf(ps) == here then
         Coach.ask("back" .. here, ("You are where %s goes on (step %d: %s). Back to the guide?"):format(
           ns.cdb.parked.route, ns.cdb.parked.step or 1, plain(E.describe(ps))), "Back to the guide", "Not yet",
-          function() E.resume() end, "/lev route resume does the same")
+          function() E.resume() end, "/zug route resume does the same")
       end
     end
   end
@@ -343,20 +402,23 @@ function Coach.tick()
     st.saveAt = now
     local lines = {}
     for k, l in ipairs(Coach.why()) do lines[k] = plain(l) end
-    ns.cdb.coach = { state = state, why = lines, at = C.epoch() }
+    local doing = act == "hunting" and s and E.objective(s) or nil
+    ns.cdb.coach = { state = state, activity = act, doing = doing and plain(doing) or nil, why = lines, at = C.epoch() }
   end
 end
 
 -- The heads-up: the route's step is in another zone. Once per zone.
 function Coach.announce()
-  if not on() then return end
+  if not on() or ns.Pause.on() then return end
   local E = Eng()
   local r, i, s = E.route(), E.index(), E.step()
   if not (r and s) or r.dynamic then return end
   local there, here = mapOf(s), C.mapPos()
   if not there or there == here or there == st.announced then return end
   st.announced = there
-  C.print("|cff80c0ffnext stop is in %s|r: %s  Why: %s  |cff999999/lev why|r", zone(there), E.describe(s), Coach.moveReason(r, i) or "that is where the guide goes next.")
+  local why = Coach.moveReason(r, i) or "that is where the guide goes next."
+  C.print("|cff80c0ffnext stop is in %s|r: %s  Why: %s  |cff999999/zug why|r", zone(there), E.describe(s), why)
+  if ns.Peon then ns.Peon.say(("New zone: %s. Me lead."):format(zone(there)), nil, ns.Peon.LINES.zone) end
 end
 
 -- The window's one line about it (UI.lua shows it under the step).
@@ -385,18 +447,52 @@ function Coach.routeFor()
   return Route.Get(name) and name or nil
 end
 
+-- How do you want to play? Asked once (the page can change it: Plan & Runs).
+ns.On("PLAYER_ENTERING_WORLD", function()
+  if not on() or Route.goal() or ns.db.goalAsked then return end
+  local function askGoal()
+    if Route.goal() then return end
+    ns.db.goalAsked = true
+    local function set(g) ns.db.goal, ns.db.goalAt = g, C.epoch(); C.print("goal: %s (the companion page's Plan & Runs changes it)", g == "speed" and "fastest leveling" or "completion") end
+    Coach.ask("goal", "How do you want to play? Fastest leveling skips cooking, first aid and crafting trainers. Completion keeps everything and points out other quests, reputation and professions.",
+      "Fastest leveling", "Completion", function() set("speed") end, "/zug goal speed | /zug goal complete", function() set("complete") end)
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(4, askGoal) else askGoal() end
+end)
+
 ns.On("PLAYER_ENTERING_WORLD", function()
   if not on() or ns.cdb.route or ns.cdb.offeredRoute then return end
   local name = Coach.routeFor()
   if not name then return end
+  local function follow(n) Eng().setRoute(n); C.print("following %q; /zug why explains any step", n) end
   local function offer()
     if ns.cdb.route then return end
     ns.cdb.offeredRoute = true
-    Coach.ask("route", ("No route yet. Follow %s? It is RestedXP's leveling guide for your race and class, step by step with an arrow."):format(name),
-      "Follow it", "Not now", function() Eng().setRoute(name); C.print("following %q; /lev why explains any step", name) end,
-      "/lev route use " .. name)
+    local aoe = Route.Get(name .. " AoE") and name .. " AoE"
+    if aoe then
+      -- RestedXP has an AoE variant for this race and class (pulling packs, for mages)
+      Coach.ask("route", ("No route yet. RestedXP has two for you: questing (%s), or AoE (%s: big pulls, faster but riskier). Which one? Escape: neither for now."):format(name, aoe),
+        "Questing", "AoE", function() follow(name) end, "/zug route use " .. name .. " | /zug route use " .. aoe, function() follow(aoe) end)
+    else
+      Coach.ask("route", ("No route yet. Follow %s? It is RestedXP's leveling guide for your race and class, step by step with an arrow."):format(name),
+        "Follow it", "Not now", function() follow(name) end, "/zug route use " .. name)
+    end
   end
-  if C_Timer and C_Timer.After then C_Timer.After(6, offer) else offer() end
+  if C_Timer and C_Timer.After then C_Timer.After(5, offer) else offer() end
+end)
+
+-- First run: the peon says hello, the questions above come one at a time (the
+-- queue in Coach.ask), and when they are done he says where things are.
+ns.On("PLAYER_ENTERING_WORLD", function()
+  if not on() or ns.db.wizardDone then return end
+  ns.db.wizardDone = true
+  local function hello()
+    if ns.Peon then ns.Peon.say(ns.Peon.LINES.hello or "Zug zug!", "yell") end
+    Coach.onIdle = function()
+      if ns.Peon then ns.Peon.say(ns.Peon.LINES.goodbye or "Ready to work.") end
+    end
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(2, hello) else hello() end
 end)
 
 local ticks = 0

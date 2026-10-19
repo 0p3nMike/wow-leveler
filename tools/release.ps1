@@ -2,6 +2,7 @@
 #
 #   .\tools\release.ps1            -> dist\zugzugleveler-setup.exe  (double-click: installs everything)
 #                                     dist\ZugzugLeveler-<version>.zip (the addon alone, for CurseForge/Wago)
+#                                     dist\zugzugleveler-companion-mac-{arm64,amd64} (the page, for a Mac)
 #
 # The setup program is the companion built with the addon packed inside
 # (companion/bundle.go, -tags bundle). It finds World of Warcraft, copies the
@@ -31,6 +32,14 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'companion tests failed' }
   go build -tags bundle -ldflags "-s -w" -o (Join-Path $dist 'zugzugleveler-setup.exe') .
   if ($LASTEXITCODE -ne 0) { throw 'go build failed' }
+  # Mac: the companion alone (run from Terminal; the setup program and the game
+  # watcher are Windows-only). Unsigned: macOS asks to allow it in Privacy & Security.
+  foreach ($arch in 'arm64', 'amd64') {
+    $env:GOOS, $env:GOARCH = 'darwin', $arch
+    go build -ldflags "-s -w" -o (Join-Path $dist "zugzugleveler-companion-mac-$arch") .
+    if ($LASTEXITCODE -ne 0) { throw "mac $arch build failed" }
+  }
+  Remove-Item Env:GOOS, Env:GOARCH
 } finally { Pop-Location }
 
 $zip = Join-Path $dist "ZugzugLeveler-$Version.zip"

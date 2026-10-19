@@ -4,7 +4,7 @@
 -- logging off for the night does not count against a step.
 -- A step's segment = time from it becoming current to it finishing. Only steps
 -- you actually played count: steps fast-forwarded past (already done) or
--- /lev skip'ped are not timed, so they can never set a fake "best".
+-- /zug skip'ped are not timed, so they can never set a fake "best".
 --   ZugzugLevelerDB.best[route].seg[i]  your best segment for step i (any character)
 --   ZugzugLevelerCharDB.split           this character's current attempt
 -- Shown: the running step clock against its best, and the sum of
@@ -40,7 +40,7 @@ end
 ns.On("SL_TICK", function()
   local now = C.now()
   local a = attempt()
-  if a and last then a.played = a.played + math.min(now - last, 2) end -- a hitch is not play time
+  if a and last and not ns.Pause.on() then a.played = a.played + math.min(now - last, 2) end -- a hitch is not play time
   last = now
 end)
 

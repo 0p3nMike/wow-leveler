@@ -1,0 +1,25 @@
+{
+  "_note": "The peon's fixed lines, in his voice: caveman efficiency (few words, no filler, the facts exact). The page says them (peon.js, app.js), the addon says ready/annoyed/game (data/Voice.lua is generated from this file), and tools/peon_voice.py renders each one. Edit here only, then re-run tools/peon_voice.py --ship.",
+  "ready": ["Something need doing?", "Ready to work.", "Work, work.", "Zug zug.", "Okie dokie.", "Be happy to."],
+  "annoyed": ["Why you poking me again?", "Me busy. Leave me alone!", "Me not that kind of orc!"],
+  "tabs": {
+    "world": "Map. Quests. Click quest, me show where.",
+    "plan": "Numbers here. Plan here. Fast run good.",
+    "about": "Help here. Me explain."
+  },
+  "paused": "Break. Me wait. Press play.",
+  "noroute": "No route. Type zug route list.",
+  "think": "Hmm. Me think.",
+  "unknown": "Me not know.",
+  "game": {
+    "pause": "Break. Me wait.",
+    "resume": "Back to work!",
+    "turnin": "Work complete.",
+    "levelup": "Zug zug! Level up!",
+    "talent": "New talent. Me show.",
+    "zone": "New zone. Me lead.",
+    "ask": "Me need answer.",
+    "hello": "Zug zug! Me peon. Me ask few things.",
+    "goodbye": "Ready to work. Detour? Pause button. Lost? Click me."
+  }
+}

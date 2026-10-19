@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -55,4 +56,14 @@ func ours(addr string) bool {
 	}
 	r.Body.Close()
 	return r.StatusCode == http.StatusOK
+}
+
+// defaultWow: where Blizzard's launcher installs the game by default on this OS.
+// On a Mac the companion runs from Terminal (the setup program and the game
+// watcher are Windows-only: they use the registry and Wow*.exe).
+func defaultWow() string {
+	if runtime.GOOS == "darwin" {
+		return "/Applications/World of Warcraft"
+	}
+	return `C:\Program Files (x86)\World of Warcraft`
 }

@@ -67,6 +67,7 @@ ns.On("PLAYER_XP_UPDATE", function(unit)
   local gain = XP.delta(last, cur, max, lvl)
   last = { xp = cur, max = max, lvl = lvl }
   if gain <= 0 then return end
+  if ns.Pause.on() then pendingQuest = 0; return end -- a detour's XP is not the route's rate
   local quest = math.min(gain, pendingQuest)
   pendingQuest = pendingQuest - quest
   local now, s = C.epoch(), session()
@@ -74,6 +75,16 @@ ns.On("PLAYER_XP_UPDATE", function(unit)
   s.samples[#s.samples + 1] = { now, gain }
   prune(s, now)
   ns.Fire("SL_XP", gain, quest)
+end)
+
+-- after a pause: the session and its samples move on by the paused time, so
+-- XP/hour counts only the time you were on the route
+ns.On("SL_PAUSE", function(paused, secs)
+  local s = session()
+  if paused or not s or not secs or secs <= 0 then return end
+  local now = C.epoch()
+  s.start = math.min(s.start + secs, now)
+  for _, smp in ipairs(s.samples) do smp[1] = math.min(smp[1] + secs, now) end
 end)
 
 ns.On("SL_TICK", function()

@@ -45,11 +45,15 @@ func NewLAN(port string) *LAN {
 type config struct {
 	LAN bool       `json:"lan"`
 	Ask *AskConfig `json:"ask,omitempty"` // ask.go
+	// Voice: the peon's spoken lines on the page (voice.go)
+	Voice *VoiceConfig `json:"voice,omitempty"`
 	// Wowhead: fetch Wowhead's files (3D model, item icons, zone maps, item
 	// looks, quest tooltips). Off unless the player turns it on: Wowhead's
 	// terms (ZAM EULA) do not allow downloads by software other than a
 	// browser, so each player decides for themselves (settings.go).
 	Wowhead bool `json:"wowhead"`
+	// Updates: ask GitHub for a newer release (update.go). Off unless switched on.
+	Updates bool `json:"updates"`
 }
 
 func (l *LAN) loadConfig() config {

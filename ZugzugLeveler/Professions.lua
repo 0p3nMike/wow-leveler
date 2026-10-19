@@ -10,7 +10,7 @@
 --              "~" because it assumes one skill-up per craft (true while the
 --              recipe is orange; yellow and green give fewer).
 --   gathering  what to gather and where, for your faction.
---   capped     skill at the rank's maximum: which trainer, and /lev prof way
+--   capped     skill at the rank's maximum: which trainer, and /zug prof way
 --              puts the arrow on them.
 -- In the profession window the game itself says which recipes still give
 -- skill-ups (C_TradeSkillUI.GetRecipeInfo -> relativeDifficulty: 0 orange,
@@ -87,7 +87,7 @@ function P.lines()
     local s = P.step(p.name, p.rank)
     if p.max > 0 and p.rank >= p.max and p.max < 300 then
       local t = P.trainer(p.name, p.max)
-      rows[#rows + 1] = head .. "  |cffffd100train the next rank|r" .. (t and " |cff999999/lev prof way|r" or "")
+      rows[#rows + 1] = head .. "  |cffffd100train the next rank|r" .. (t and " |cff999999/zug prof way|r" or "")
     elseif s and s.gather then
       local f = faction()
       local zones = (f == "Alliance" and s.a) or (f == "Horde" and s.h) or s.both or s.a or s.h or ""
@@ -106,7 +106,7 @@ function P.lines()
   return rows
 end
 
--- /lev prof way: the arrow to the trainer you need (first capped profession)
+-- /zug prof way: the arrow to the trainer you need (first capped profession)
 function P.wayToTrainer()
   local f = faction()
   for _, p in ipairs(P.mine()) do

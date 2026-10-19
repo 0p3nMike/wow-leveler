@@ -1,4 +1,4 @@
--- Model.lua -- your character in 3D, inside the game (/lev model).
+-- Model.lua -- your character in 3D, inside the game (/zug model).
 --
 -- The game draws it: a PlayerModel from Blizzard's own "ModelTemplate"
 -- (Blizzard_SharedXML ModelFrameTemplates.xml: ModelFrameMixin, drag to turn),

@@ -18,7 +18,7 @@
 -- Speeds are MEASURED, not assumed, once there is data:
 --   run    your actual moving speed (median-ish of recent samples)
 --   fly    straight-line distance / time of each real flight you take
--- Until the first flight, fly speed is ASSUMED (DEFAULT_FLY) and /lev flight
+-- Until the first flight, fly speed is ASSUMED (DEFAULT_FLY) and /zug flight
 -- says so.
 
 local _, ns = ...

@@ -61,6 +61,70 @@ local function build()
   sync:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
   f.sync = sync
 
+  -- Pause / resume (Pause.lua): two bars while running, Blizzard's own
+  -- Navigation-Tracked-Arrow (the arrow's art, Arrow.lua) turned to point right
+  -- while paused. WHITE8x8 is the backdrop's texture above.
+  local pause = CreateFrame("Button", "ZugzugLevelerPauseButton", f, "BackdropTemplate")
+  pause:SetSize(18, 18)
+  pause:SetPoint("TOPRIGHT", -54, -4)
+  backdrop(pause)
+  pause.bars = {}
+  for k = 1, 2 do
+    local bar = pause:CreateTexture(nil, "OVERLAY")
+    bar:SetTexture("Interface\\Buttons\\WHITE8x8")
+    bar:SetSize(3, 10)
+    bar:SetPoint("CENTER", (k == 1) and -3 or 3, 0)
+    bar:SetVertexColor(0.9, 0.9, 0.9, 1)
+    pause.bars[k] = bar
+  end
+  pause.play = pause:CreateTexture(nil, "OVERLAY")
+  pause.play:SetSize(16, 16)
+  pause.play:SetPoint("CENTER", 1, 0)
+  if C_Texture and C.try(C_Texture.GetAtlasInfo, "Navigation-Tracked-Arrow") then
+    pause.play:SetAtlas("Navigation-Tracked-Arrow")
+  else
+    pause.play:SetTexture("Interface\\Minimap\\MinimapArrow")
+  end
+  pause.play:SetRotation(-math.pi / 2)
+  pause.play:SetVertexColor(0.45, 0.68, 0.95, 1)
+  local hl = pause:CreateTexture(nil, "HIGHLIGHT")
+  hl:SetAllPoints()
+  hl:SetTexture("Interface\\Buttons\\WHITE8x8")
+  hl:SetVertexColor(1, 1, 1, 0.12)
+  pause:SetScript("OnClick", function() ns.Pause.toggle() end)
+  pause:SetScript("OnEnter", function(self)
+    if GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      if ns.Pause.on() then
+        GameTooltip:SetText("Resume the route")
+        GameTooltip:AddLine(("Paused for %s. The arrow goes back to your step and the clocks start again."):format(XP.fmtTime(ns.Pause.secs())), 1, 1, 1, true)
+      else
+        GameTooltip:SetText("Pause the route")
+        GameTooltip:AddLine("For a detour of your own (a flight path, waiting for a friend): nothing is timed, the coach stays quiet and the arrow rests. A /way still guides you.", 1, 1, 1, true)
+      end
+      GameTooltip:Show()
+    end
+  end)
+  pause:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  f.pause = pause
+
+  -- Tabs: Route (the step, the arrow's order, XP/hour: the default), Prof
+  -- (professions), Stats (session, splits, where the time goes), so the window
+  -- stays small. The choice is kept in ZugzugLevelerDB.uiTab.
+  f.tabs = {}
+  for k, t in ipairs(UI.TABS) do
+    local b = CreateFrame("Button", nil, f)
+    b:SetSize(40, 16)
+    b:SetPoint("TOPRIGHT", -76 - (#UI.TABS - k) * 42, -5)
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetAllPoints()
+    b:SetFontString(fs)
+    b:SetText(t[2])
+    b.key = t[1]
+    b:SetScript("OnClick", function() ns.db.uiTab = t[1]; UI.refresh() end)
+    f.tabs[#f.tabs + 1] = b
+  end
+
   lines = {} -- a pool; refresh() fills as many as it needs and sizes the frame
   if ns.db.ui and ns.db.ui.shown == false then f:Hide() end
 end
@@ -98,13 +162,63 @@ local function details(s, mode, out)
   if s.npc then out[#out + 1] = { "  |cff80ff80talk to:|r " .. s.npc, "GameFontHighlightSmall" } end
 end
 
+UI.TABS = { { "route", "Route" }, { "prof", "Prof" }, { "stats", "Stats" } }
+function UI.tab()
+  local t = ns.db and ns.db.uiTab
+  for _, x in ipairs(UI.TABS) do if x[1] == t then return t end end
+  return "route"
+end
+
+-- the XP line every tab shows at the bottom
+local function xpLine(out)
+  local cur, max, lvl, rested = C.xp()
+  local pctTxt = cur and max > 0 and string.format("%d%%", math.floor(cur / max * 100)) or "--"
+  out[#out + 1] = { ("XP/h |cffffffff%s|r  ·  level in |cffffffff%s|r  ·  lvl %s %s%s"):format(
+    XP.fmtNum(XP.rate()), XP.fmtTime(XP.ttl()), lvl or "?", pctTxt,
+    (rested and rested > 0) and string.format("  |cff4fa3ffrested %s|r", XP.fmtNum(rested)) or ""), "GameFontHighlightSmall" }
+end
+
 function UI.refresh()
   if not f then return end
   local E = ns.Engine
   local r = E.route()
-  local rec = ns.Rec.active() and "  |cffff4040● REC|r" or ""
+  local paused = ns.Pause.on()
+  local rec = (ns.Rec.active() and "  |cffff4040● REC|r" or "") .. (paused and "  |cff8fb8f0paused|r" or "")
+  -- the pause button's face, and a blue edge on the window while paused
+  if f.pause then
+    for _, bar in ipairs(f.pause.bars) do bar:SetShown(not paused) end
+    f.pause.play:SetShown(paused)
+  end
+  if f.SetBackdropBorderColor then
+    if paused then f:SetBackdropBorderColor(0.45, 0.68, 0.95, 0.8) else f:SetBackdropBorderColor(0.56, 0.82, 0.31, 0.6) end
+  end
   local out = {}
-  if r then
+  local tab = UI.tab()
+  for _, b in ipairs(f.tabs or {}) do
+    local fs = b.GetFontString and b:GetFontString()
+    if fs and fs.SetTextColor then
+      if b.key == tab then fs:SetTextColor(1, 0.82, 0) else fs:SetTextColor(0.6, 0.6, 0.6) end
+    end
+  end
+  if tab == "prof" then
+    out[#out + 1] = { "Professions" .. rec, "GameFontNormalSmall" }
+    local wl = ns.Prof and ns.Prof.windowLine()
+    if wl then out[#out + 1] = { wl, "GameFontHighlightSmall", wrap = true } end
+    for _, row in ipairs(ns.Prof and ns.Prof.lines() or {}) do out[#out + 1] = { row, "GameFontHighlightSmall", wrap = true } end
+    if #out == 1 then out[#out + 1] = { "Nothing to do for your professions right now. |cff999999/zug prof|r", "GameFontDisableSmall", wrap = true } end
+  elseif tab == "stats" then
+    out[#out + 1] = { "This session" .. rec, "GameFontNormalSmall" }
+    xpLine(out)
+    local st = ns.cdb.stats and r and ns.cdb.stats[E.index() - 1]
+    local s = XP.session()
+    out[#out + 1] = { ("%ssession %s, %s XP (%s quest)"):format(
+      st and string.format("last step %s, %s XP  ·  ", XP.fmtTime(st.secs), XP.fmtNum(st.xp)) or "",
+      XP.fmtTime(s and C.epoch() - s.start), XP.fmtNum(s and s.total), XP.fmtNum(s and s.quest)), "GameFontDisableSmall", wrap = true }
+    local split = r and ns.Splits and ns.Splits.line()
+    if split then out[#out + 1] = { split, "GameFontHighlightSmall", wrap = true } end
+    local dt = ns.Downtime and ns.Downtime.line()
+    if dt then out[#out + 1] = { dt, "GameFontHighlightSmall", wrap = true } end
+  elseif r then
     local i = E.index()
     local s = E.step()
     local mode = ns.Way.mode and ns.Way.mode() or "travel"
@@ -117,49 +231,37 @@ function UI.refresh()
       out[#out + 1] = { E.describe(s), "GameFontHighlight", wrap = true }
     end
     if s then details(s, mode, out) end
-    local why = ns.Coach and ns.Coach.line()
+    local why = paused and ("|cff8fb8f0Paused %s:|r nothing is timed and the coach is quiet. The quest log is still followed. |cff999999/zug resume|r"):format(XP.fmtTime(ns.Pause.secs()))
+      or (ns.Coach and ns.Coach.line())
     if why then out[#out + 1] = { why, "GameFontHighlightSmall", wrap = true } end
     for _, row in ipairs(ns.Danger and ns.Danger.rows() or {}) do out[#out + 1] = { row, "GameFontHighlightSmall", wrap = true } end
     local up = E.upcoming(3)
     for k = 2, #up do out[#out + 1] = { E.describe(r.steps[up[k]]), "GameFontDisableSmall" } end
     local plan, pend = ns.cdb.plan, ns.Optimizer and ns.Optimizer.pending
     if plan then
-      out[#out + 1] = { ("|cff60ff60optimized order|r |cff999999(~%d yd shorter, %d left · /lev optimize clear)|r"):format(plan.save or 0, #plan.list), "GameFontDisableSmall" }
+      out[#out + 1] = { ("|cff60ff60optimized order|r |cff999999(~%d yd shorter, %d left · /zug optimize clear)|r"):format(plan.save or 0, #plan.list), "GameFontDisableSmall" }
     elseif pend then
-      out[#out + 1] = { ("|cffffd100a shorter order saves ~%d yd|r |cff999999/lev optimize · auto: /lev optimize auto|r"):format(math.floor(pend.save + 0.5)), "GameFontDisableSmall" }
+      out[#out + 1] = { ("|cffffd100a shorter order saves ~%d yd|r |cff999999/zug optimize · auto: /zug optimize auto|r"):format(math.floor(pend.save + 0.5)), "GameFontDisableSmall" }
     end
+    local tl = ns.Talents and ns.Talents.line()
+    if tl then out[#out + 1] = { tl, "GameFontHighlightSmall", wrap = true } end
+    for _, row in ipairs(ns.Party and ns.Party.rows() or {}) do out[#out + 1] = { row, "GameFontHighlightSmall" } end
     local waiting = #E.deferred()
     if waiting > 0 then
       out[#out + 1] = { ("|cffc080ff%d set aside|r |cff999999(back on level-up · /swap back)|r"):format(waiting), "GameFontDisableSmall" }
     end
   else
-    out[#out + 1] = { "zugzugleveler" .. rec, "GameFontNormalSmall" }
-    out[#out + 1] = { "No route. |cff999999/lev route list|r", "GameFontHighlight" }
-    out[#out + 1] = { ns.Rec.active() and "Recording this run." or "|cff999999/lev rec start|r to record one.", "GameFontDisableSmall" }
+    out[#out + 1] = { "zugzug_leveler" .. rec, "GameFontNormalSmall" }
+    out[#out + 1] = { "No route. |cff999999/zug route list|r", "GameFontHighlight" }
+    out[#out + 1] = { ns.Rec.active() and "Recording this run." or "|cff999999/zug rec start|r to record one.", "GameFontDisableSmall" }
   end
-  local cur, max, lvl, rested = C.xp()
-  local pctTxt = cur and max > 0 and string.format("%d%%", math.floor(cur / max * 100)) or "--"
-  out[#out + 1] = { ("XP/h |cffffffff%s|r  ·  level in |cffffffff%s|r  ·  lvl %s %s%s"):format(
-    XP.fmtNum(XP.rate()), XP.fmtTime(XP.ttl()), lvl or "?", pctTxt,
-    (rested and rested > 0) and string.format("  |cff4fa3ffrested %s|r", XP.fmtNum(rested)) or ""), "GameFontHighlightSmall" }
-  local st = ns.cdb.stats and r and ns.cdb.stats[E.index() - 1]
-  local s = XP.session()
-  out[#out + 1] = { ("%ssession %s, %s XP (%s quest)"):format(
-    st and string.format("last step %s, %s XP  ·  ", XP.fmtTime(st.secs), XP.fmtNum(st.xp)) or "",
-    XP.fmtTime(s and C.epoch() - s.start), XP.fmtNum(s and s.total), XP.fmtNum(s and s.quest)), "GameFontDisableSmall" }
-  local split = r and ns.Splits and ns.Splits.line()
-  if split then out[#out + 1] = { split, "GameFontHighlightSmall" } end
-  if ns.Prof then
-    local wl = ns.Prof.windowLine()
-    if wl then out[#out + 1] = { wl, "GameFontHighlightSmall", wrap = true } end
-    for _, row in ipairs(ns.Prof.lines()) do out[#out + 1] = { row, "GameFontHighlightSmall", wrap = true } end
-  end
-  local dt = ns.Downtime and ns.Downtime.line()
-  if dt then out[#out + 1] = { dt, "GameFontHighlightSmall", wrap = true } end
+  if tab == "route" then xpLine(out) end
 
   local y = -6
   for n, item in ipairs(out) do
     local fs = row(n)
+    -- the first line shares the top with the tabs and Sync
+    fs:SetWidth(n == 1 and (WIDTH - 16 - 76 - #UI.TABS * 42) or (WIDTH - 16))
     fs:SetFontObject(item[2])
     fs:SetWordWrap(item.wrap and true or false)
     fs:SetText(item[1])
@@ -173,7 +275,7 @@ function UI.refresh()
   f:SetHeight(-y + 4)
 end
 
--- The window's visible rows as text (for tests and /lev why).
+-- The window's visible rows as text (for tests and /zug why).
 function UI.lines()
   local t = {}
   for _, fs in ipairs(lines or {}) do
@@ -187,6 +289,7 @@ function UI.toggle()
   f:SetShown(not f:IsShown())
   ns.db.ui = ns.db.ui or {}
   ns.db.ui.shown = f:IsShown()
+  if ns.Peon then ns.Peon.show() end -- the peon goes with the window
 end
 
 -- ------------------------------------------------------------ export window

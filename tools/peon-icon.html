@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- peon-icon.html: renders the mascot (companion/web/peon) to PNGs for the
+     page's favicon, the README and the addon's icon. Run by tools/peon-icon.mjs
+     (headless Chrome over a local static server rooted at the repo); it leaves
+     data URLs in window.out. -->
+<meta charset="utf-8">
+<script type="importmap">{ "imports": { "three": "/companion/web/vendor/three-0.170.0/three.module.min.js" } }</script>
+<body style="margin:0;background:transparent">
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "/companion/web/vendor/three-0.170.0/loaders/GLTFLoader.js";
+
+const g = await new GLTFLoader().loadAsync("/companion/web/peon/peon.gltf");
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xfff4e0, 0x405060, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2.6);
+sun.position.set(2, 4, 3);
+scene.add(sun);
+const model = g.scene;
+scene.add(model);
+const mixer = new THREE.AnimationMixer(model);
+const clip = (n) => g.animations.find((c) => c.name === n);
+
+function shot(size, pose, at, frameFn) {
+  const canvas = document.createElement("canvas");
+  const r = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+  r.setSize(size, size, false);
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  mixer.stopAllAction();
+  const a = mixer.clipAction(clip(pose));
+  a.reset().play();
+  mixer.setTime(at);
+  model.updateMatrixWorld(true);
+  const cam = new THREE.PerspectiveCamera(24, 1, 0.01, 100);
+  frameFn(cam);
+  r.render(scene, cam);
+  const url = canvas.toDataURL("image/png");
+  r.dispose();
+  return url;
+}
+
+const box = new THREE.Box3().setFromObject(model);
+const s = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+model.rotation.y = 0.25; // turned toward the camera
+// full body (logo)
+const body = (cam) => {
+  const d = (s.y * 0.6) / Math.tan((cam.fov * Math.PI) / 360);
+  cam.position.set(c.x + d * 0.4, c.y + s.y * 0.06, c.z + d * 0.92);
+  cam.lookAt(c.x, c.y, c.z);
+};
+// head and shoulders (icon): aimed at the Head bone, which the pick never covers
+const headBone = model.getObjectByName("Head_08");
+const head = (cam) => {
+  const hp = headBone.getWorldPosition(new THREE.Vector3());
+  const d = (s.y * 0.13) / Math.tan((cam.fov * Math.PI) / 360);
+  const y = hp.y - s.y * 0.012; // the bone sits behind the face
+  cam.position.set(hp.x + d * 0.3, y + s.y * 0.01, hp.z + d * 0.95);
+  cam.lookAt(hp.x, y, hp.z);
+};
+window.out = {
+  logo: shot(512, "Work", 0.35, body),
+  icon: shot(256, "Stand1", 0, head),
+};
+</script>
+</body>

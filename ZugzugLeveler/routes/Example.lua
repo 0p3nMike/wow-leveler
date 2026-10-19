@@ -1,7 +1,7 @@
 -- routes/Example.lua -- the route file format. Registers nothing.
 --
--- A real route is easiest to get by playing it: /lev rec start, level, then
--- /lev rec stop and /lev route fromrun <n>. /lev export <name> prints it in
+-- A real route is easiest to get by playing it: /zug rec start, level, then
+-- /zug rec stop and /zug route fromrun <n>. /zug export <name> prints it in
 -- exactly this form, ready to save as routes/<Name>.lua and add to the TOC.
 --
 -- Quest IDs and coordinates must be FACTS from your own client (the recorder

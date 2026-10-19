@@ -125,6 +125,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(names)
 	files := map[string]int64{}
+	var errs []any // the addon's kept errors (Events.lua ns.noteError), for the page's notice
 	for _, a := range names {
 		files[accts[a]] = mtime(accts[a]).Unix()
 		db, err := s.accountDB(a)
@@ -132,6 +133,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, nil, err)
 			return
 		}
+		errs = append(errs, list(db["errors"])...)
 		for i, rv := range list(db["runs"]) {
 			run, _ := rv.(map[string]any)
 			if run == nil {
@@ -164,7 +166,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{
 		"client": s.paths.Client, "addon": s.paths.AddonDir(), "accounts": names,
-		"runs": runs, "chars": cs, "files": files, "now": time.Now().Unix(),
+		"runs": runs, "chars": cs, "files": files, "now": time.Now().Unix(), "errors": errs,
 	}, nil)
 }
 
@@ -302,6 +304,100 @@ func (s *Server) npcs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out, nil)
 }
 
+// /api/prices: auction house prices the addon read (Auction.lua), per
+// "Realm-Faction": {at, listings, items: {itemID: {p, n, q, name}}}.
+func (s *Server) prices(w http.ResponseWriter, r *http.Request) {
+	accts, _ := s.paths.Scan()
+	out := map[string]any{}
+	for a := range accts {
+		db, err := s.accountDB(a)
+		if err != nil {
+			continue
+		}
+		for k, v := range byKey(db["prices"]) {
+			m, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			if old, ok := out[k].(map[string]any); ok && num(old["at"]) > num(m["at"]) {
+				continue // the newer read of the two accounts
+			}
+			out[k] = map[string]any{"at": m["at"], "listings": m["listings"], "items": byKey(m["items"])}
+		}
+	}
+	writeJSON(w, out, nil)
+}
+
+// /api/loot: what dropped for the player, per creature (Loot.lua):
+// {npcID: {name, n (corpses looted), items: {itemID: {c, q, name}}}}, all accounts added up.
+func (s *Server) loot(w http.ResponseWriter, r *http.Request) {
+	accts, _ := s.paths.Scan()
+	out := map[string]map[string]any{}
+	for a := range accts {
+		db, err := s.accountDB(a)
+		if err != nil {
+			continue
+		}
+		for k, v := range byKey(db["loot"]) {
+			m, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			o := out[k]
+			if o == nil {
+				o = map[string]any{"n": 0.0, "items": map[string]any{}}
+				out[k] = o
+			}
+			if name, ok := m["name"].(string); ok {
+				o["name"] = name
+			}
+			o["n"] = num(o["n"]) + num(m["n"])
+			items := o["items"].(map[string]any)
+			for id, iv := range byKey(m["items"]) {
+				e, _ := iv.(map[string]any)
+				if e == nil {
+					continue
+				}
+				cur, _ := items[id].(map[string]any)
+				if cur == nil {
+					cur = map[string]any{"c": 0.0, "q": 0.0}
+					items[id] = cur
+				}
+				cur["c"], cur["q"] = num(cur["c"])+num(e["c"]), num(cur["q"])+num(e["q"])
+				if name, ok := e["name"].(string); ok {
+					cur["name"] = name
+				}
+			}
+		}
+	}
+	writeJSON(w, out, nil)
+}
+
+// /api/questtext: quests' own words, read when a quest giver offered them
+// (Export.lua E.questText): {questID: {title, desc, ask, npc, map, x, y, at}},
+// the newer read of the accounts.
+func (s *Server) questText(w http.ResponseWriter, r *http.Request) {
+	accts, _ := s.paths.Scan()
+	out := map[string]any{}
+	for a := range accts {
+		db, err := s.accountDB(a)
+		if err != nil {
+			continue
+		}
+		for k, v := range byKey(db["questText"]) {
+			m, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			if old, ok := out[k].(map[string]any); ok && num(old["at"]) > num(m["at"]) {
+				continue
+			}
+			out[k] = m
+		}
+	}
+	writeJSON(w, out, nil)
+}
+
 // byKey: a Lua table keyed by number, whether it came back as a map or (when
 // its keys happened to be 1..n) as a list.
 func byKey(v any) map[string]any {
@@ -432,6 +528,12 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/ask", s.ask)
 	mux.HandleFunc("/api/prefs", s.prefs)
 	mux.HandleFunc("/api/npcs", s.npcs)
+	mux.HandleFunc("/api/prices", s.prices)
+	mux.HandleFunc("/api/questtext", s.questText)
+	mux.HandleFunc("/api/loot", s.loot)
+	mux.HandleFunc("/api/update", s.update)
+	mux.HandleFunc("/api/voice", s.voice)
+	mux.HandleFunc("/api/voice/line", s.voiceLine)
 	mux.HandleFunc("/api/settings", s.settings)
 	mux.HandleFunc("/api/quests", s.gate(s.wowhead.quests))
 	mux.HandleFunc("/api/questdb", s.literal("data/Quests.lua", "ns.QuestDB ="))

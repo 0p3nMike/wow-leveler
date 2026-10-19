@@ -21,7 +21,7 @@ local C = ns.C
 local B = {}
 ns.Buttons = B
 
-BINDING_HEADER_ZUGZUGLEVELER = "zugzugleveler"
+BINDING_HEADER_ZUGZUGLEVELER = "zugzug_leveler"
 _G["BINDING_NAME_CLICK ZugzugLevelerItemButton:LeftButton"] = "Use the step's quest item"
 _G["BINDING_NAME_CLICK ZugzugLevelerTargetButton:LeftButton"] = "Target the step's mob / NPC"
 

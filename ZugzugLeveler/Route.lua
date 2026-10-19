@@ -14,7 +14,7 @@
 -- by arriving at (map, x, y), by an event, or by the next quest step finishing.
 --
 -- Routes come from two places: files in routes/ (ns.Route.Register), and
--- recorded runs converted in game (/lev route fromrun N), saved in
+-- recorded runs converted in game (/zug route fromrun N), saved in
 -- ZugzugLevelerDB.routes so every character can use them.
 
 local _, ns = ...
@@ -68,8 +68,42 @@ function Route.category(s)
 end
 
 -- Left out by the player's choice (the page's Prefs.lua)?
+-- The player's goal: "speed" (fastest leveling) or "complete" (reputation,
+-- professions, every quest). Kept in ZugzugLevelerDB.goal; the page's
+-- Prefs.lua (goal + at) wins when it was chosen later than the game's.
+Route.GOALS = { speed = true, complete = true }
+function Route.goal()
+  local p, db = ns.RoutePrefs, ns.db
+  if not db then return nil end
+  if p and Route.GOALS[p.goal] and (p.at or 0) > (db.goalAt or 0) then db.goal, db.goalAt = p.goal, p.at end
+  return db.goal
+end
+-- What each goal leaves out when the player has not picked step kinds on the page.
+Route.GOAL_SKIP = { speed = { cooking = true, firstaid = true, professions = true }, complete = {} }
+
+-- The step kinds left out: picked on the page (routes/custom/Prefs.lua) or in
+-- the game's options panel (ZugzugLevelerDB.skip, skipAt), whichever was picked
+-- later; with neither, the goal's.
+function Route.skips()
+  local prefs, db = ns.RoutePrefs, ns.db
+  local page = prefs and prefs.skip
+  local pageSet = (page and next(page)) or (prefs and prefs.custom)
+  if db and db.skip and (db.skipAt or 0) >= ((pageSet and prefs.at) or 0) then return db.skip end
+  if pageSet then return page or {} end
+  return Route.GOAL_SKIP[Route.goal() or ""]
+end
+
+function Route.setSkip(kind, left)
+  local db = ns.db
+  local cur = Route.skips() or {}
+  local t = {}
+  for k, v in pairs(cur) do t[k] = v end
+  t[kind] = left and true or nil
+  db.skip, db.skipAt = t, C.epoch()
+end
+
 function Route.leftOut(s)
-  local p = ns.RoutePrefs and ns.RoutePrefs.skip
+  local p = Route.skips()
   if not p then return false end
   local k = Route.category(s)
   return k ~= nil and p[k] == true

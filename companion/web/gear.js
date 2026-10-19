@@ -155,9 +155,10 @@ export function statLabel(k) {
 // The character sheet, laid out as the game's: slots down both sides of the
 // character (icons against the model), the hands below. `center` is the 3D
 // model's stage. ups[slot]: "+4.9" when a better item is known.
-export function sheet(slots, ups, center) {
+// compact: icon sockets only, as the game's character pane (names in the tooltips)
+export function sheet(slots, ups, center, compact) {
   const side = (list, cls) => h("div", { class: `side ${cls}` }, list.map(sl => slotCell(sl, slots[sl], ups[sl])));
-  return h("div", { class: "sheet" },
+  return h("div", { class: "sheet" + (compact ? " compact" : "") },
     side(LEFT, "left"), h("div", { class: "center" }, center), side(RIGHT, "right"),
     h("div", { class: "hands" }, BOTTOM.map(sl => slotCell(sl, slots[sl], ups[sl]))));
 }

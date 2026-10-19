@@ -139,5 +139,5 @@ end
 
 function C.print(fmt, ...)
   local msg = select("#", ...) > 0 and string.format(fmt, ...) or fmt
-  print("|cff8fd14fzugzugleveler|r " .. msg)
+  print("|cff8fd14fzugzug_leveler|r " .. msg)
 end

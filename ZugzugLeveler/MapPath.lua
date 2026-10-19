@@ -10,6 +10,9 @@
 -- Minimap: markers for the next steps and the loop, placed from world
 -- position: radius from C_Minimap.GetViewRadius, turned with GetPlayerFacing
 -- when the rotateMinimap CVar is on. Points past the edge sit on the rim.
+-- Objectives: for each unfinished quest in your log, the places AllTheThings
+-- gives for its objectives (obj in data/Quests.lua: { map, x, y, crs }), as
+-- orange diamonds on the world map and small dots on the minimap.
 
 local _, ns = ...
 local C, Route = ns.C, ns.Route
@@ -56,6 +59,23 @@ function M.points()
     end
   end
   return steps, loop
+end
+
+-- Objective places of the unfinished quests in your log: { cont, wx, wy, q }.
+local OBJ_MAX = 40
+function M.objectives()
+  local out = {}
+  local db = ns.QuestDB or {}
+  for _, e in ipairs(ns.cdb and ns.cdb.questLog or {}) do
+    local rec = e.q and not e.done and db[e.q]
+    for _, o in ipairs(rec and rec.obj or {}) do
+      if o[1] and o[2] and #out < OBJ_MAX then
+        local cont, wx, wy = C.worldPos(o[1], o[2], o[3])
+        if cont then out[#out + 1] = { cont = cont, wx = wx, wy = wy, q = e.q } end
+      end
+    end
+  end
+  return out
 end
 
 -- ---------------------------------------------------------------- world map
@@ -133,6 +153,7 @@ function provider:RefreshAllData()
         local size = 10 / scale
         m.t:SetSize(size, size)
         m.t:SetColorTexture(c[1], c[2], c[3], 1)
+        m.t:SetRotation(0)
         m.t:ClearAllPoints()
         m.t:SetPoint("CENTER", overlay, "TOPLEFT", here[1], here[2])
         m.t:Show()
@@ -143,6 +164,23 @@ function provider:RefreshAllData()
       prev = here
     else
       prev = nil -- a gap where the route leaves this map
+    end
+  end
+  -- objective places of the quests in your log: orange diamonds
+  local nm = #chain
+  for _, p in ipairs(M.objectives()) do
+    local x, y = canvasXY(mapID, p)
+    if x then
+      nm = nm + 1
+      local m = mark(nm)
+      local size = 9 / scale
+      m.t:SetSize(size, size)
+      m.t:SetColorTexture(1, 0.55, 0.1, 0.9)
+      m.t:SetRotation(math.pi / 4)
+      m.t:ClearAllPoints()
+      m.t:SetPoint("CENTER", overlay, "TOPLEFT", x * w, -y * h)
+      m.t:Show()
+      m.fs:Hide()
     end
   end
   -- the hunting loop, closed
@@ -215,7 +253,7 @@ local function miniUpdate()
   local n = 0
   local function put(p, r, g, b, size)
     local x, y, edge = M.miniOffset(p, pc, pwx, pwy, facing, rotate, yards, radius)
-    if not x or n >= MINI_DOTS + #loop + 6 then return end
+    if not x or n >= MINI_DOTS + #loop + 16 then return end
     n = n + 1
     local t = dot(n)
     t:SetSize(size, size)
@@ -225,6 +263,8 @@ local function miniUpdate()
     t:Show()
   end
   for _, p in ipairs(loop) do put(p, 1, 0.5, 0.25, 5) end
+  local objs = M.objectives()
+  for k = 1, math.min(#objs, 10) do put(objs[k], 1, 0.55, 0.1, 5) end
   for _, hit in ipairs(ns.Danger and ns.Danger.near or {}) do -- threats near you, red
     put({ cont = hit.at[1], wx = hit.at[2], wy = hit.at[3] }, 1, 0.1, 0.1, 7)
   end
@@ -257,6 +297,7 @@ end)
 
 ns.On("SL_STEP", M.refreshWorld)
 ns.On("SL_ROUTE", M.refreshWorld)
+ns.On("QUEST_LOG_UPDATE", M.refreshWorld)
 
 function M.toggle(v)
   ns.db.mapPath = v

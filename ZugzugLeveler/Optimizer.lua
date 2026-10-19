@@ -16,8 +16,8 @@
 --            is ~100k steps of Lua, a few ms), with a step only allowed once
 --            everything it must follow is done.
 -- It SUGGESTS: when the best order beats the route's by MIN_SAVE yards and
--- MIN_PCT, it says so; /lev optimize applies it (an Engine plan), and
--- /lev optimize auto applies it by itself each time a new window opens.
+-- MIN_PCT, it says so; /zug optimize applies it (an Engine plan), and
+-- /zug optimize auto applies it by itself each time a new window opens.
 -- The route's order is not wrong when it is longer: a trainer visit can be
 -- worth the walk (a new Fireball rank speeds up every kill after it), and
 -- only you can judge that, which is why it asks.
@@ -213,7 +213,7 @@ function O.plan()
     after = w.after, window = w, from = from }
 end
 
--- Guide order until the route pointer reaches `after` (used by /lev optimize clear).
+-- Guide order until the route pointer reaches `after` (used by /zug optimize clear).
 function O.hold()
   local w = O.window()
   O.held = w and w.after or nil
@@ -268,7 +268,7 @@ local busy
 function O.replan()
   if busy or O.mode() ~= "auto" then return end
   if ns.Way.mode and ns.Way.mode() == "work" then return end
-  -- /lev optimize clear: the guide's order for the steps that were in view;
+  -- /zug optimize clear: the guide's order for the steps that were in view;
   -- auto resumes by itself once the route has moved past them
   if O.held and (ns.cdb.step or 1) < O.held then return end
   O.held = nil
@@ -288,7 +288,7 @@ function O.replan()
   if ns.UI then ns.UI.refresh() end
 end
 
--- "suggest": say it once per window, apply on /lev optimize.
+-- "suggest": say it once per window, apply on /zug optimize.
 local lastKey
 function O.suggest()
   if ns.cdb.plan or O.mode() ~= "suggest" then return end
@@ -298,12 +298,13 @@ function O.suggest()
   if key == lastKey then return end
   lastKey = key
   O.pending = p
-  C.print("a shorter order saves ~%d yd: next would be %s  ·  /lev optimize (once) · /lev optimize auto (always)",
+  C.print("a shorter order saves ~%d yd: next would be %s  ·  /zug optimize (once) · /zug optimize auto (always)",
     p.save, ns.Engine.describe(ns.Engine.route().steps[p.idx[1]]))
   if ns.UI then ns.UI.refresh() end
 end
 
 function O.check()
+  if ns.Pause.on() then return end
   if O.mode() == "auto" then O.replan() else O.suggest() end
 end
 
@@ -317,5 +318,5 @@ end)
 local ticks = 0
 ns.On("SL_TICK", function()
   ticks = ticks + 1
-  if ticks % (EVERY * 2) == 0 and O.mode() == "auto" and ns.Engine.route() then O.replan() end
+  if ticks % (EVERY * 2) == 0 and O.mode() == "auto" and not ns.Pause.on() and ns.Engine.route() then O.replan() end
 end)

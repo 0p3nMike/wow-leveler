@@ -68,8 +68,12 @@ function E.snapshot()
   -- raceID and sex (2 male, 3 female) pick the 3D model on the companion page
   local _, race, raceID = C.try(UnitRace, "player")
   local map, x, y = C.mapPos()
+  -- Forever names have a surname: UnitName gives (first, surname), which
+  -- Blizzard's Camelot NameUtil.FormatUnitNameForDisplay joins with a space
+  local first, surname = C.try(UnitName, "player")
   ns.cdb.char = {
-    name = C.try(UnitName, "player"), realm = C.try(GetRealmName), class = class, race = race,
+    name = first, surname = type(surname) == "string" and surname ~= "" and surname or nil,
+    realm = C.try(GetRealmName), class = class, race = race,
     raceID = raceID, sex = C.try(UnitSex, "player"),
     faction = C.try(UnitFactionGroup, "player"), level = lvl, xp = cur, xpMax = max, rested = rested,
     map = map, x = x, y = y, at = C.epoch(),
@@ -264,6 +268,33 @@ function E.questFrame()
   ns.db.quests[q] = rec
 end
 
+-- A quest's own words when a quest giver offers it, before it is in your log
+-- (GetQuestText / GetObjectiveText at QUEST_DETAIL, as Blizzard's QuestInfo.lua
+-- reads them), with who offered it and where: the companion page shows them
+-- for quests you have not picked up yet, with or without Wowhead.
+--   ZugzugLevelerDB.questText[questID] = { title, desc, ask, npc, map, x, y, at }
+local QUEST_TEXT_KEEP = 400
+function E.questText()
+  local q = plain(C.try(GetQuestID))
+  if not q or q == 0 then return end
+  local desc, ask = plain(C.try(GetQuestText)), plain(C.try(GetObjectiveText))
+  if type(desc) ~= "string" and type(ask) ~= "string" then return end
+  local map, x, y = C.mapPos()
+  ns.db.questText = ns.db.questText or {}
+  local t = ns.db.questText
+  t[q] = { title = C.questTitle(q) or plain(C.try(GetTitleText)), at = C.epoch(),
+    desc = type(desc) == "string" and desc ~= "" and desc:sub(1, 600) or nil,
+    ask = type(ask) == "string" and ask ~= "" and ask:sub(1, 400) or nil,
+    npc = plain(C.try(UnitName, "npc")), map = map, x = x, y = y }
+  -- keep the newest QUEST_TEXT_KEEP
+  local n, oldest, oldestAt = 0, nil, math.huge
+  for id, rec in pairs(t) do
+    n = n + 1
+    if (rec.at or 0) < oldestAt then oldest, oldestAt = id, rec.at or 0 end
+  end
+  if n > QUEST_TEXT_KEEP and oldest then t[oldest] = nil end
+end
+
 function E.merchant()
   local n = plain(C.try(GetMerchantNumItems)) or 0
   local npc = plain(C.try(UnitName, "npc"))
@@ -359,6 +390,7 @@ ns.On("QUEST_TURNED_IN", function(q)
   ns.cdb.turnedIn[q] = C.epoch()
 end)
 ns.On("QUEST_DETAIL", E.questFrame, true) -- before Assist accepts and the frame closes
+ns.On("QUEST_DETAIL", E.questText, true)
 ns.On("QUEST_COMPLETE", E.questFrame, true)
 ns.On("MERCHANT_SHOW", E.merchant)
 ns.On("PLAYER_LOGOUT", function() E.snapshot(); E.money(); E.questLog() end)

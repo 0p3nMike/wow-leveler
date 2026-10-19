@@ -149,7 +149,7 @@ function QL.unswap(q)
   return n
 end
 
--- Your place in the guide you leave is kept: /lev route resume goes back.
+-- Your place in the guide you leave is kept: /zug route resume goes back.
 function QL.start()
   ns.Engine.park()
   ns.Engine.setRoute(QL.NAME)
@@ -157,7 +157,7 @@ function QL.start()
   QL.rebuild(true)
 end
 
--- What /lev ql debug prints: where the positions came from.
+-- What /zug ql debug prints: where the positions came from.
 function QL.debug()
   local placed = QL.collect()
   local acc = 0

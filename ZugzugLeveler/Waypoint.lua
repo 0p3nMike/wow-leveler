@@ -69,7 +69,8 @@ end
 
 local function publish(force)
   local t = manual or routeTarget
-  local pt = manual or pinTarget
+  -- paused: no pin for the route's step (a /way of your own keeps its pin)
+  local pt = manual or (not ns.Pause.on() and pinTarget) or nil
   local pk = key(pt)
   if force or pk ~= lastPinKey then setPin(pt); lastPinKey = pk end
   local k = key(t)
@@ -173,6 +174,7 @@ function W.clear()
 end
 
 function W.refresh() publish(true) end
+ns.On("SL_PAUSE", function() publish(true) end)
 
 ns.On("SL_STEP", function(_, s) W.set(s) end)
 

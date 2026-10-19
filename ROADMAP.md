@@ -2,72 +2,57 @@
 
 For a player who is struggling, the bar is: install in one step, never have to
 type a command, never be told to do something the game will not let them do,
-and always be able to find out why. Status as of 2026-10-18.
+and always be able to find out why. Status as of 2026-10-18 (0.3.0-alpha).
 
 ## Before the alpha test (a friend, one PC)
 
-- **Decide the Wowhead parts.** ZAM's terms (corp.fanbyte.com/legal/terms) forbid
-  downloading Wowhead content with software other than a browser, and framing parts of
-  it, without written consent. The 3D model, item icons, zone maps, item looks and quest
-  tooltips all come from Wowhead. Ask ZAM for consent, or switch them off in builds
-  that leave this PC (the game-side replacements are below).
-- **Try it in game:** a full restart (new files: Coach, Live, QuestInfo, Quests data,
-  Prefs). Things only the game can confirm:
-  - whether routes load only for your own character (`Route.Skip` reads
-    `UnitRace` while the files load);
-  - the quest data's "can't take it yet" calls on real quests;
-  - the coach's popups;
-  - whether the chat log is written live (`/lev live check`);
-  - phone pairing on a real phone;
-  - the installer on a second PC.
-- **Code-sign the setup** or tell the tester about "Windows protected your PC".
+- **Wowhead parts: decided.** Off by default (settings.go), each player's choice; the game-side
+  replacements are in (`/zug model`, the game's quest text, the peon). Asking ZAM for consent is
+  still open if the pictures should ever be on for everyone.
+- **Try it in game** (full restart: new files Pause, Peon, Loot, Party, Talents, Auction, media/icon).
+  Things only the game can confirm:
+  - the peon model (creature 10556) and its talk animations; the Horde portrait atlas;
+  - the pause button, the resting arrow, `/zug step 320` on the regenerated AoE route;
+  - `/zug prices` at the auction house; loot counting (GetLootSourceInfo);
+  - party lines with a friend; talents on a level-up (level 10+);
+  - the first-run questions on a new character (questing / AoE);
+  - whether the chat log is written live (`/zug live check`); phone pairing; the installer on a
+    second PC.
+- **Code-sign the setup** or tell the tester about "Windows protected your PC". Needs a
+  certificate (Michael's call: cost).
 
-## Game-side replacements (no Wowhead)
+## Done (2026-10-18)
 
-- The character model, inside the game: the addon draws your own character in a model
-  frame (Blizzard's DressUpModel), with real icons (`SetTexture(fileID)`). The page keeps
-  the slot list and tooltips (already the game's own text).
-- Quest text: already from the game (`GetQuestLogQuestText`). Extend it to quests you
-  have not picked up yet (`QUEST_DETAIL`, when a quest giver shows one).
-- Zone maps: the page's plain grid, with the game's coordinates.
+- First-run questions (goal, route with questing/AoE, live updates), the peon introducing them.
+- Objective areas on the world map and minimap (AllTheThings `obj`).
+- Loot you saw: your own drop rates on the page.
+- Options panel with every setting, in sections.
+- Error reports (`/zug errors`, the page's notice).
+- Party play (route place and quest progress shared with the group).
+- Hardcore / self-found steps, from the game's own setting.
+- Data refresh pipeline (`tools/refresh.py`, pinned commits, `--check`).
+- Updates: the page says when a release is newer (opt-in).
+- Languages, first part: the chat log is read in the client's language.
+- Talent advice (RestedXP's talent guides).
+- Mac: the companion builds and runs there.
+- Pause/resume, the talking peon (game and page), auction house money, goal choice, window tabs.
 
-## Missing for "anyone"
+## Still missing
 
-1. **First-run wizard in game.** It asks for your class, whether you want AoE or
-   questing routes and whether to turn on live updates, then picks the route. Today the
-   coach only offers the route.
-2. **In-game objective areas and markers**, as Questie draws them. AllTheThings' data
-   has objective coordinates and creature lists (`obj` in data/Quests.lua): put them
-   on the world map and minimap.
-3. **Loot that you saw.** Count kills and what each creature dropped
-   (`LOOT_OPENED`, `GetLootSourceInfo`), so the page can show *your* drop rates. That's
-   how Wowhead gets its numbers. AllTheThings has no rates, and its Forever data has few
-   world bosses so far.
-4. **Languages.** The chat-log reader and the coach are English-only (enUS
-   GlobalStrings). Read the client's locale and use Ketho's string tables for other languages.
-5. **Updates.** The companion checks the project's releases and offers the new
-   addon and data (RestedXP and AllTheThings change weekly). One button, no reinstall.
-6. **Data refresh pipeline.** One script that pulls RXPGuides and AllTheThings at
-   pinned commits, regenerates the routes, quest data and loot, runs both test suites
-   and diffs the step counts.
-7. **Everything in the in-game options panel**, not only slash commands: live
-   updates, route options (cooking...), coach on/off, phone mode status.
-8. **Error reports.** On a Lua error, a copy box with the error and the addon
-   version, plus where to paste it (Questie and AllTheThings both send people to
-   Discord). No automatic upload.
-9. **Party play.** Share route position and quest progress with a friend
-   (`C_ChatInfo.SendAddonMessage` to the party), so two people levelling together stay
-   in step.
-10. **Classic Era (11509) build.** `ZugzugLeveler_Vanilla.toc` and a compatibility pass.
-11. **Talent and spell advice** per level (RestedXP has talent guides), and "train
-    these now" with costs.
-12. **Hardcore / self-found options** that the route converter already understands
-    (`--hardcore`, `--ssf`).
-13. **Mac.** The companion is Go and builds for macOS; the installer and the
-    open-with-the-game watcher are Windows-only.
+1. **Languages, second part.** The addon's own words (window, coach, peon) are English. Needs a
+   string table and translators; the quest and item names already come from the game.
+2. **"Train these now" with costs.** Class trainer spells per level with their price: no open data
+   source found yet (RestedXP's guides only say "train your class spells").
+3. **Classic Era build.** A second TOC and a compatibility pass, plus routes from RestedXP's classic
+   guides (a different set: the converter is tuned to the Forever guides). Needs an Era client to
+   test on, and its interface number read from the game.
+4. **Mac installer and "open with the game".** The companion runs on a Mac; the setup program and
+   the watcher use the Windows registry and Wow*.exe.
+5. **One-button updates.** Today the page links the release; installing it is running its setup.
+6. **Hunter pet talents** (`.pettalent` in RestedXP's guides) are left out.
 
 ## Kept out on purpose
 
 - Anything that presses keys or moves the character for you (ghoul's bot) on live realms.
-- Questie's and QuestieDB's code and data (no license).
-- Selling any of it (RestedXP's routes are CC BY-NC-SA).
+- Questie's, QuestieDB's and Guidelime's code and data (no license).
+- Selling any of it (RestedXP's routes and the peon model are non-commercial licenses).

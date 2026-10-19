@@ -99,7 +99,36 @@ end
 
 -- A step's `need` conditions (imported from RXP's .isOnQuest and friends)
 -- say when it applies at all; a step that does not apply is passed over.
+-- Play styles: RestedXP has steps only for hardcore or softcore characters, and
+-- only for self-found or auction-house ones; rxp2route keeps them, marked
+-- (mode = "hc", "sc", "ssf", "ah", or two joined by a comma). The game says which
+-- this character is (C_GameRules.IsHardcoreActive, C_PlayerInfo.IsSelfFoundActive,
+-- 1.60.1 export); ZugzugLevelerCharDB.hardcore / .ssf (true/false) override it.
+function E.hardcore()
+  local v = cdb().hardcore
+  if v ~= nil then return v end
+  return (C_GameRules and C.try(C_GameRules.IsHardcoreActive)) and true or false
+end
+function E.ssf()
+  local v = cdb().ssf
+  if v ~= nil then return v end
+  return (C_PlayerInfo and C.try(C_PlayerInfo.IsSelfFoundActive)) and true or false
+end
+local MODE_OK = {
+  hc = function() return E.hardcore() end, sc = function() return not E.hardcore() end,
+  ssf = function() return E.ssf() end, ah = function() return not E.ssf() end,
+}
+function E.modeOk(s)
+  if not s.mode then return true end
+  for m in s.mode:gmatch("[^,]+") do
+    local f = MODE_OK[m]
+    if f and not f() then return false end
+  end
+  return true
+end
+
 function E.applies(s)
+  if not E.modeOk(s) then return false end -- a hardcore / self-found step, and this character is not
   if Route.leftOut(s) then return false end -- the player left this kind of step out (the page's route options)
   local n = s.need
   if not n then return true end
@@ -279,6 +308,12 @@ local function sayLeft()
     table.concat(names, ", "))
   leftNames = {}
 end
+
+-- a pause does not count against the step it happened on
+ns.On("SL_PAUSE", function(paused, secs)
+  local st = ns.cdb and ns.cdb.stepStart
+  if not paused and st and secs and secs > 0 then st.t = math.min(st.t + secs, C.epoch()) end
+end)
 
 local function stamp(i)
   local s = ns.XP.session()
@@ -564,7 +599,7 @@ local VERB = {
 }
 
 function E.describe(s)
-  if not s then return "Route finished. |cff999999/lev questlog|r keeps going on your own quests." end
+  if not s then return "Route finished. |cff999999/zug questlog|r keeps going on your own quests." end
   Route.Resolve(s)
   local what
   if Route.QUEST_STEP[s.act] then
@@ -588,21 +623,41 @@ end
 
 -- A regenerated route file renumbers its steps, so finished and set-aside
 -- marks, step timings and an optimizer plan point at the wrong steps: keep
--- only "everything before your place is done" (as /lev step does).
+-- only "everything before your place is done" (as /zug step does).
+-- What a step is, to find it again in a regenerated route (db.stepKey).
+function E.stepKey(s)
+  if not s then return nil end
+  return table.concat({ s.act or "", tostring(s.q or ""), s.text or s.title or "", tostring(s.obj or "") }, "|")
+end
+
 rebase = function(db, r)
   if not r or r.dynamic or db.routeSteps == #r.steps then return end
+  -- the route file changed (new data): find the step you were on by what it is,
+  -- nearest to where it was; otherwise keep the number
+  if db.stepKey and db.step then
+    for d = 0, 60 do
+      local hit
+      for _, j in ipairs({ db.step + d, db.step - d }) do
+        if not hit and r.steps[j] and E.stepKey(r.steps[j]) == db.stepKey then hit = j end
+      end
+      if hit then db.step = hit; break end
+    end
+  end
   if db.routeSteps then
-    C.print("route %q changed (%d -> %d steps): you are at step %d; /lev step <n> moves you", db.route, db.routeSteps, #r.steps, db.step or 1)
+    C.print("route %q changed (%d -> %d steps): you are at step %d; /zug step <n> moves you", db.route, db.routeSteps, #r.steps, db.step or 1)
   end
   local i = math.min(db.step or 1, #r.steps + 1)
   db.sticky, db.stats, db.deferred, db.plan, db.kept, db.routeSteps = {}, {}, {}, nil, nil, #r.steps
   for j = 1, i - 1 do db.sticky[j] = true end
 end
 
+E.rebase = rebase -- for tests
+ns.On("SL_STEP", function(_, s) if s then cdb().stepKey = E.stepKey(s) end end)
+
 ns.On("SL_READY", function()
   local db, r = cdb(), E.route()
   if db.route and not r then
-    C.print("route %q is no longer installed; /lev route list", db.route)
+    C.print("route %q is no longer installed; /zug route list", db.route)
   end
   rebase(db, r)
 end)

@@ -1,0 +1,11 @@
+Model Information:
+* title:	[Warcraft] - Orc peon
+* source:	https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868
+* author:	Northcliffe (https://sketchfab.com/Northcliffe)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "[Warcraft] - Orc peon" (https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868) by Northcliffe (https://sketchfab.com/Northcliffe) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

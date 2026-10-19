@@ -1,4 +1,7 @@
-// app.js -- the companion page: overview, runs, map, planner, professions.
+// app.js -- the companion page, three screens: Character (the character sheet:
+// you in the middle, progress on the left, gear / professions / details on the
+// right), Map & Quests (the zone map and the quest log side by side, as the
+// game's Map & Quest Log) and Plan & Runs (analytics, then planning).
 // Everything comes from the local API (companion/api.go), which reads the
 // addon's SavedVariables and files. The page re-reads when the game saves.
 
@@ -25,7 +28,38 @@ const STATES = [ // fixed order = the validated slot order
   { key: "dead", label: "Dead", color: "var(--s6)" },
 ];
 
-const S = { tab: "overview", state: null, charKey: null, char: null, cache: {}, version: null };
+const S = { tab: "character", state: null, charKey: null, char: null, cache: {}, version: null };
+
+// first name and surname: Forever names have both (Export.lua saves surname)
+const fullName = (snap, c) => [snap.name || (c && c.name), snap.surname].filter(Boolean).join(" ");
+
+// A panel with its own tabs (the character screen's sides). The choice is
+// remembered per panel in this browser; each tab is built when first shown.
+function tabbedPanel(id, tabs, cls = "") {
+  let cur = null;
+  try { cur = localStorage.getItem("panel:" + id); } catch { }
+  if (!tabs.some(x => x.key === cur)) cur = tabs[0].key;
+  const strip = h("div", { class: "ptabs", role: "tablist" });
+  const body = h("div", { class: "pbody" });
+  const built = {};
+  const show = async key => {
+    cur = key;
+    try { localStorage.setItem("panel:" + id, key); } catch { }
+    for (const b of strip.children) b.setAttribute("aria-selected", String(b.dataset.key === key));
+    if (!built[key]) {
+      built[key] = h("div", { role: "tabpanel" });
+      const tab = tabs.find(x => x.key === key);
+      try { await tab.build(built[key]); } catch (e) { built[key].append(h("div", { class: "note bad" }, "Something went wrong: " + e.message)); console.error(e); }
+    }
+    body.replaceChildren(built[key]);
+  };
+  for (const x of tabs) strip.append(h("button", { type: "button", role: "tab", "data-key": x.key, onclick: () => show(x.key) }, x.label));
+  const box = h("section", { class: "panel " + cls }, strip, body);
+  // a tab whose content was made elsewhere (the gear panel is drawn with the sheet)
+  box.provide = (key, el) => { built[key] = el; if (cur === key) body.replaceChildren(el); };
+  box.ready = show(cur);
+  return box;
+}
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -185,10 +219,10 @@ function fieldNotes(db, prof) {
 
 // ------------------------------------------------------------------ overview
 
-async function overview(view) {
+// Things to act on, above the character screen: a reset save, a new
+// version, addon errors, and the goal question while it is unanswered.
+async function notices(view) {
   const c = S.char;
-  if (!c) return view.append(h("div", { class: "empty" }, "No character data yet. Log in with the addon enabled, then /reload."));
-  const db = c.db, snap = db.char || {};
   // a save that suddenly lost most of itself (backup.go): offer the backup
   try {
     const bk = await api(`/api/backups?key=${encodeURIComponent(S.charKey)}`);
@@ -204,6 +238,32 @@ async function overview(view) {
         } }, "Restore that copy"), msg));
     }
   } catch { }
+  // a newer version (update.go; only when switched on in Settings)
+  try {
+    const up = await cached("update", "/api/update");
+    if (up.newer) view.append(h("div", { class: "note" }, h("b", {}, `A new version is out: ${up.latest}. `),
+      `You have ${up.current}. `, h("a", { href: up.url, target: "_blank", rel: "noopener" }, "Get it from the release page"),
+      " and run zugzugleveler-setup.exe; your saves stay."));
+  } catch { }
+  // the addon hit errors (Events.lua keeps them): say so, and how to report them
+  const errs = G.arr(S.state && S.state.errors);
+  if (errs.length) {
+    const last = errs[errs.length - 1] || {};
+    view.append(h("div", { class: "note bad" }, h("b", {}, `The addon hit ${errs.length === 1 ? "an error" : errs.length + " errors"}. `),
+      `The last, ${ago(last.at)}: ${String(last.err || "").slice(0, 160)}. In game, /zug errors shows a report to copy (no character name in it).`));
+  }
+  // not chosen yet: how do you want to play? (prefs.go; Plan & Runs changes it)
+  try {
+    const pp = await api("/api/prefs");
+    if (!pp.goal) view.append(h("section", { class: "why" }, h("h2", {}, "How do you want to play?"),
+      goalCards(null, async g => { try { await postPrefs({ goal: g }); render(); } catch { } }),
+      h("p", { class: "sub" }, "Change it any time under Plan & Runs. In game, /reload after choosing (the addon also asks once).")));
+  } catch { }
+}
+
+// The left panel's "Now": the climb, the next stop, why, and the live feed.
+async function progress(view) {
+  const c = S.char, db = c.db, snap = db.char || {};
   const sess = db.session || {};
   const span = (sess.seen || 0) - (sess.start || 0);
   const rate = span > 60 ? (sess.total || 0) / span * 3600 : null;
@@ -225,8 +285,12 @@ async function overview(view) {
       eta ? `Level ${snap.level + 1} in ${fmtTime(eta)}` : `${fmtNum(left)} XP to level ${snap.level + 1}`,
       h("span", { class: "muted" }, rate ? `  at ${fmtNum(rate)} XP an hour` : "")));
   } else {
-    hero.append(h("div", { class: "eta" }, `${snap.name || c.name}`),
-      h("p", { class: "sub" }, "Your level and XP appear here after the game saves once with the updated addon (restart the game, then /reload)."));
+    hero.append(h("p", { class: "sub" }, "Your level and XP appear here after the game saves once with the updated addon (restart the game, then /reload)."));
+  }
+  if (db.paused) {
+    // Pause.lua: a detour of the player's own; the route waits and nothing is timed
+    hero.append(h("p", { class: "paused" }, h("span", { class: "mark" }, "❚❚"),
+      ` Paused in game ${ago(db.paused.at)}: the route waits, XP an hour and step times leave the detour out. The window's play button or /zug resume picks it up again.`));
   }
   if (next) {
     const here = worldPoint(snap, maps), there = worldPoint(next.s, maps);
@@ -238,29 +302,42 @@ async function overview(view) {
       h("span", { class: "mark" }, "►"), h("span", { class: "muted" }, "Next stop"),
       actBadge(next.s.act), qlink(next.s.q, stepText(next.s)),
       b ? h("span", { class: "dist" }, `${fmtNum(b.yd)} yd ${b.dir}`) : h("span", { class: "muted" }, away)));
+    // the quest in its own words, if a quest giver has offered it before (Export.lua E.questText)
+    if (next.s.q) {
+      try {
+        const qt = (await cached("questtext", "/api/questtext"))[next.s.q];
+        if (qt && (qt.ask || qt.desc)) hero.append(h("p", { class: "sub qtext" }, qt.ask || qt.desc, qt.npc ? h("span", { class: "muted" }, ` (${qt.npc})`) : null));
+      } catch { }
+    }
   } else if (missing) {
-    hero.append(h("p", { class: "sub" }, `The route "${missing}" is no longer installed. Pick another in game with /lev route list.`));
+    hero.append(h("p", { class: "sub" }, `The route "${missing}" is no longer installed. Pick another in game with /zug route list.`));
   }
 
-  // the coach's explanation (Coach.lua): the same words /lev why says in game
+  // the coach's explanation (Coach.lua): the same words /zug why says in game
   const coach = db.coach;
   if (coach && G.arr(coach.why).length) {
     const STATE = { questing: "questing", travelling: "on the way", flying: "flying", grinding: "levelling up", questlog: "following your own quests", done: "route finished", none: "no route" };
+    const ACT = { hunting: "hunting", talking: "talking to a quest giver", vendor: "at a vendor", travelling: "on the way", flying: "flying", fighting: "fighting off the route", grinding: "levelling up", resting: "eating or drinking", afk: "away", paused: "paused (a detour of your own)", dead: "dead", idle: "standing still" };
+    const doing = coach.activity ? `${ACT[coach.activity] || coach.activity}${coach.doing ? ` (${coach.doing})` : ""}` : (STATE[coach.state] || coach.state);
     view.append(h("section", { class: "why" }, h("h2", {}, "Why this step"),
-      h("p", { class: "sub" }, `${STATE[coach.state] || coach.state}, when the game last saved (${ago(coach.at)}). In game, /lev why says the same.`),
+      h("p", { class: "sub" }, `You were ${doing} when the game last saved (${ago(coach.at)}). In game, /zug why says the same.`),
       h("ul", { class: "notes" }, G.arr(coach.why).map(l => h("li", {}, l)))));
   }
 
-  // live, between saves: the game's own chat log (chatlog.go; /lev live on in game)
+  // live, between saves: the game's own chat log (chatlog.go; /zug live on in game)
   const live = h("section", { class: "why live" });
   view.append(live);
   liveFeed(live, snap, db);
+}
 
-  const g = h("div", { class: "grid" });
-  view.append(g);
+// The left panel's "Notes": field notes and this session in numbers.
+async function sessionNotes(view) {
+  const c = S.char, db = c.db, snap = db.char || {};
+  const sess = db.session || {};
+  const span = (sess.seen || 0) - (sess.start || 0);
   const notes = [...(await gearNotes(c)), ...fieldNotes(db)].slice(0, 7);
   const fn = h("section", { class: "card" }, h("h2", {}, "Field notes"));
-  g.append(fn);
+  view.append(fn);
   if (notes.length) fn.append(h("ul", { class: "notes" }, notes.map(([fig, text]) => h("li", {}, h("span", { class: "fig" }, fig), text))));
   else fn.append(h("p", { class: "sub" }, "Notes appear once there is more to go on: play for a while with the addon on, then /reload."));
 
@@ -277,9 +354,8 @@ async function overview(view) {
   if (db.route) { try { const r = await cached("route:" + db.route, `/api/route?name=${encodeURIComponent(db.route)}`); routeLen = ` of ${r.steps.length}`; } catch { } }
   const split = db.split || {};
   const se = h("section", { class: "card" }, h("h2", {}, "This session"));
-  g.append(se);
+  view.append(se);
   se.append(facts([
-    ["Character", `${snap.name || c.name}, level ${snap.level ?? "?"} ${raceName(snap.race)} ${(snap.class || "").toLowerCase()}`],
     ["Played", fmtTime(span > 0 ? span : null)],
     ["XP gained", `${fmtNum(sess.total)} (${fmtNum(sess.quest)} from quests)`],
     ["Route", db.route ? `${db.route}, step ${db.step ?? "?"}${routeLen}` : "none"],
@@ -289,6 +365,13 @@ async function overview(view) {
     ["Running speed", db.speed && db.speed.run ? `${db.speed.run.toFixed(1)} yards a second` : "not measured yet"],
     ["Flight speed", db.speed && db.speed.fly ? `${db.speed.fly.toFixed(1)} yards a second` : "measured on your first flight"],
   ]));
+}
+
+// Plan & Runs' analytics for this character: where the time went, step times, gold.
+function charAnalytics(g) {
+  const c = S.char, db = c.db;
+  const sess = db.session || {};
+  const samples = G.arr(db.money).map(G.arr).filter(p => p.length === 2).sort((a, b) => a[0] - b[0]);
   const t = h("div", { class: "card" }, h("h2", {}, "Where the time went"), h("p", { class: "sub" }, "This character, by zone (fighting, eating and drinking, moving, flying, standing)."));
   g.append(t);
   stackedBars(t.appendChild(h("div")), { rows: timeRows(db.downtime), keys: STATES });
@@ -309,7 +392,7 @@ async function overview(view) {
 
 async function runsTab(view) {
   const runs = S.state.runs || [];
-  if (!runs.length) return view.append(h("div", { class: "empty" }, "No recorded runs yet. In game: /lev rec start, play, then /reload."));
+  if (!runs.length) return view.append(h("div", { class: "empty" }, "No recorded runs yet. In game: /zug rec start, play, then /reload."));
   const pick = h("select", {}, runs.map((r, i) => h("option", { value: i }, `Run ${r.n}: ${r.name || r.char || ""}, levels ${r.startLevel ?? "?"} to ${r.endLevel ?? "now"} (${r.events} events)`)));
   pick.value = String(S.runPick ?? runs.length - 1);
   const cmp = h("select", {}, h("option", { value: "" }, "nothing"), runs.map((r, i) => h("option", { value: i }, `Run ${r.n}: ${r.name || r.char || ""}`)));
@@ -373,7 +456,7 @@ async function runsTab(view) {
     c4.append(h("table", {}, h("thead", {}, h("tr", {}, h("th", { class: "num" }, "When"), h("th", {}, ""), h("th", {}, "Quest"), h("th", { class: "num" }, "XP"))),
       h("tbody", {}, qs.slice(-80).map(e => h("tr", {}, h("td", { class: "num" }, fmtTime(clock(e.t))),
         h("td", {}, actBadge(e.e === "done" ? "complete" : e.e)), h("td", {}, qlink(e.q, e.title || titles[e.q] || `quest ${e.q}`)), h("td", { class: "num" }, e.gain ? fmtNum(e.gain) : ""))))));
-    box.append(h("div", { class: "row" }, h("button", { class: "btn", onclick: () => { S.plannerFromRun = { run, label: `#${r.n} ${r.name || ""}` }; go("planner"); } }, "Open this run in the Planner")));
+    box.append(h("div", { class: "row" }, h("button", { class: "btn", onclick: () => { S.plannerFromRun = { run, label: `#${r.n} ${r.name || ""}` }; render(); } }, "Open this run in the Planner")));
   };
   pick.addEventListener("change", show);
   cmp.addEventListener("change", show);
@@ -409,6 +492,9 @@ async function upcoming(db, n) {
   for (let j = db.plan ? db.plan.after : (db.step || 1); j <= route.steps.length && idx.length < n; j++) idx.push(j);
   return { route, list: idx.slice(0, n).map(j => ({ i: j, s: route.steps[j - 1] })).filter(x => x.s) };
 }
+
+// The quest log asks the map to show a quest: its zone, its places ringed.
+let mapShow = null;
 
 async function mapTab(view) {
   const c = S.char;
@@ -583,6 +669,16 @@ async function mapTab(view) {
         pickups++;
       }
     }
+    // the quest picked in the log: its places, ringed in the accent colour
+    if (S.mapFocus) {
+      for (const p of await questPlaces(c, S.mapFocus)) {
+        const q = toMap(p, mapID, maps);
+        if (!q) continue;
+        const cx = q[0] * Wm, cy = q[1] * Hm;
+        svg("circle", { class: "focusring", cx, cy, r: 16, fill: "none", stroke: "var(--accent)", "stroke-width": 3 }, s);
+        const t = svg("text", { class: "lbl", x: cx + 20, y: cy + 5 }, s); t.textContent = { accept: "pick up", turnin: "turn in", complete: "do", giver: "giver", objective: "objective" }[p.kind] || p.kind;
+      }
+    }
     // you, where the game last saved you
     const wp = worldPoint(snap, maps);
     const me = snap.x != null ? (toMap(snap, mapID, maps) || (wp && toMap(wp, mapID, maps))) : null;
@@ -599,8 +695,28 @@ async function mapTab(view) {
     const nextZone = cur && maps[cur.map] && String(cur.map) !== pick.value ? ` The next stop is in ${maps[cur.map].name}.` : "";
     box.append(h("p", { class: "sub" }, `${pts.length} of the next ${list.length} steps are on this map${off ? ` (${off} elsewhere or without a recorded zone)` : ""}${gearBox.checked ? `, and ${shown} of ${stops.length} known gear upgrades` : ""}${questBox.checked ? (G.arr(c.db.avail).length ? `; ${pickups} quests you could pick up here` : "; quests to pick up appear after a /reload with the updated addon") : ""}.${nextZone} ${art && art.url ? "The map is the game's own art, as Wowhead's Forever pages show it." : (I.picturesOn() ? "No map art for this zone on Wowhead yet, so it is drawn on a plain grid." : "A plain grid in the game's own coordinates (map pictures are off: Settings).")}`));
   };
-  for (const e of [pick, runPick, danger, gearBox, questBox]) e.addEventListener("change", draw);
+  for (const e of [pick, runPick, danger, gearBox, questBox]) e.addEventListener("change", () => { S.mapFocus = null; draw(); });
+  mapShow = async (mapID, q) => { if (maps[mapID]) pick.value = String(mapID); S.mapFocus = q; await draw(); box.scrollIntoView({ block: "nearest", behavior: "smooth" }); };
   await draw();
+}
+
+// Where a quest happens: its route steps with a place, then where AllTheThings
+// puts its giver and objectives. [{ map, x, y, wx, wy, cont, kind }]
+async function questPlaces(c, q) {
+  const out = [];
+  if (c.db.route) {
+    try {
+      const steps = (await cached("route:" + c.db.route, `/api/route?name=${encodeURIComponent(c.db.route)}`)).steps;
+      for (const s of steps) if (s.q === q && (s.map || s.wx != null)) out.push({ ...s, kind: s.act });
+    } catch { }
+  }
+  try {
+    const e = (await cached("questdb", "/api/questdb"))[q];
+    const at = e && G.arr(e.at);
+    if (at && at.length >= 3) out.push({ map: at[0], x: at[1], y: at[2], kind: "giver" });
+    for (const o of G.arr(e && e.obj)) { const oo = G.arr(o); if (oo.length >= 3 && typeof oo[0] === "number") out.push({ map: oo[0], x: oo[1], y: oo[2], kind: "objective" }); }
+  } catch { }
+  return out;
 }
 
 // A danger-list mob's card under the map: what it is, the loot AllTheThings
@@ -616,9 +732,19 @@ async function mobPanel(box, e) {
   if (items.length && I.picturesOn()) { try { looks = await api(`/api/looks?ids=${items.join(",")}`); } catch { } }
   const known = S.cache.items && S.cache.items.items || {};
   const rate = npc ? `${WOWHEAD}/npc=${npc}#drops` : `${WOWHEAD}/search?q=${encodeURIComponent(e.n)}`;
+  // your own drop rates (Loot.lua): each corpse you looted once
+  let mine = null;
+  if (npc) { try { mine = (await api("/api/loot"))[npc]; } catch { } }
+  const yours = mine && mine.n > 0 ? h("div", {},
+    h("p", { class: "sub" }, `What dropped for you, from ${mine.n} you looted:`),
+    h("ul", { class: "notes" }, Object.entries(mine.items || {}).sort((a, b) => b[1].c - a[1].c).slice(0, 12).map(([id, d]) =>
+      h("li", {}, h("span", { class: "fig" }, `${Math.round(d.c / mine.n * 100)}%`), " ",
+        G.ilink(known[id] || { id: +id, name: d.name || `item ${id}`, q: 1 }),
+        h("span", { class: "muted" }, `  ${d.c} of ${mine.n}${d.q > d.c ? `, ${d.q} in all` : ""}`))))) : null;
   box.replaceChildren(
     h("h3", {}, e.n, h("span", { class: "muted" }, ` ${e.c !== "Normal" ? e.c.toLowerCase() + ", " : ""}level ${e.lo}${e.hi !== e.lo ? "-" + e.hi : ""}`)),
     e.note ? h("p", { class: "sub" }, e.note + (e.mv ? ` (${e.mv.toLowerCase()})` : "")) : null,
+    yours,
     items.length ? h("div", {}, h("p", { class: "sub" }, "Drops, as AllTheThings records them (special drops; it has no drop rates):"),
       h("ul", { class: "notes" }, items.map(id => {
         const it = known[id] || { id, name: (looks[id] && looks[id].name) || `item ${id}`, q: 1 };
@@ -709,15 +835,34 @@ function stepKind(s, cats) {
 }
 
 // "What your route includes": kinds of step to leave out (prefs.go -> the addon's Prefs.lua).
+// The goal (prefs.go -> Prefs.lua): fastest leveling, or completion.
+const GOALS = {
+  speed: ["Fastest leveling", "XP first: RestedXP's route in the shortest order, cooking, first aid and crafting trainers left out. Best for getting to the level cap."],
+  complete: ["Completion", "Everything: other quests where you are, reputation, professions and their trainers kept in. Best if you want to see it all and have a strong economy."],
+};
+const postPrefs = body => api("/api/prefs", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify(body) });
+function goalCards(current, onPick) {
+  return h("div", { class: "goals", role: "radiogroup", "aria-label": "How you want to play" }, Object.entries(GOALS).map(([k, [name, what]]) =>
+    h("button", { type: "button", class: "goal" + (current === k ? " on" : ""), role: "radio", "aria-checked": String(current === k), onclick: () => onPick(k) },
+      h("b", {}, name), h("span", {}, what))));
+}
+
 async function routeOptions(c) {
-  const box = h("section", { class: "why ropts" }, h("h2", {}, "What your route includes"));
+  const box = h("section", { class: "why ropts" }, h("h2", {}, "How you want to play"));
   let p;
   try { p = await api("/api/prefs"); } catch (e) { box.append(h("p", { class: "note bad" }, e.message)); return box; }
+  const gmsg = h("span", { class: "muted" });
+  box.append(goalCards(p.goal, async g => {
+    try { await postPrefs({ goal: g }); gmsg.textContent = " Saved. In game: /reload."; box.replaceWith(await routeOptions(c)); }
+    catch (e) { gmsg.textContent = " " + e.message; }
+  }), gmsg, h("h3", {}, "What your route includes"));
   let steps = [];
   if (c && c.db.route) { try { steps = (await cached("route:" + c.db.route, `/api/route?name=${encodeURIComponent(c.db.route)}`)).steps; } catch { } }
   const from = (c && c.db.step) || 1, count = {};
   steps.forEach((s, i) => { if (i + 1 >= from) { const k = stepKind(s, p.categories); if (k) count[k] = (count[k] || 0) + 1; } });
-  const off = new Set(G.arr(p.skip));
+  // until you pick step kinds yourself, the goal's defaults (the addon's Route.GOAL_SKIP)
+  const defaults = Object.entries((p.goalSkip || {})[p.goal] || {}).filter(([, v]) => v).map(([k]) => k);
+  const off = new Set(p.custom ? G.arr(p.skip) : defaults);
   const msg = h("span", { class: "muted" });
   const ORDER = ["cooking", "firstaid", "professions", "weapons", "food", "classtrain", "pettrain", "optional"];
   const keys = [...ORDER.filter(k => p.categories[k]), ...Object.keys(p.categories).filter(k => !ORDER.includes(k))];
@@ -726,12 +871,16 @@ async function routeOptions(c) {
     cb.addEventListener("change", () => { if (cb.checked) off.delete(k); else off.add(k); });
     return h("label", { class: "ropt" }, cb, ` ${p.categories[k].label}`, h("span", { class: "muted" }, c && c.db.route ? `  ${count[k] || 0} step${count[k] === 1 ? "" : "s"} ahead` : ""));
   });
-  box.append(h("p", { class: "sub" }, "Untick what you do not need, and the addon (and its shortest-order planner) passes those steps over. A mage conjures food and water, so cooking can go. Quests are never left out this way."),
+  box.append(h("p", { class: "sub" }, (p.custom ? "Your own choice. " : p.goal ? `${GOALS[p.goal][0]}'s defaults. ` : "")
+      + "Untick what you do not need, and the addon (and its shortest-order planner) passes those steps over. A mage conjures food and water, so cooking can go. Quests are never left out this way."),
     h("div", { class: "roptgrid" }, boxes),
-    h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: async () => {
-      try { await api("/api/prefs", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ skip: [...off] }) }); msg.textContent = " Saved. In game: /reload."; }
-      catch (e) { msg.textContent = " " + e.message; }
-    } }, "Save for the addon"), msg));
+    h("div", { class: "row" },
+      h("button", { class: "btn primary", type: "button", onclick: async () => {
+        try { await postPrefs({ skip: [...off] }); msg.textContent = " Saved. In game: /reload."; } catch (e) { msg.textContent = " " + e.message; }
+      } }, "Save for the addon"),
+      p.custom ? h("button", { class: "btn", type: "button", onclick: async () => {
+        try { await postPrefs({ skip: [], custom: false }); box.replaceWith(await routeOptions(c)); } catch (e) { msg.textContent = " " + e.message; }
+      } }, "Back to the goal's defaults") : null, msg));
   return box;
 }
 
@@ -740,7 +889,7 @@ async function plannerTab(view) {
   const maps = await cached("maps", "/api/maps");
   const routes = await cached("routes", "/api/routes");
   view.append(await routeOptions(c));
-  view.append(h("h2", {}, "Planner"), h("p", { class: "sub" }, "Pick steps, reorder them (by hand or shortest order), and send them to the addon as the route \"Planner\". In game: /reload, then /lev route use Planner."));
+  view.append(h("h2", {}, "Planner"), h("p", { class: "sub" }, "Pick steps, reorder them (by hand or shortest order), and send them to the addon as the route \"Planner\". In game: /reload, then /zug route use Planner."));
   const routePick = h("select", {}, routes.map(r => h("option", { value: r.name }, `${r.name} (${r.steps})`)));
   const from = h("input", { type: "number", min: 1, value: 1, style: "width:80px" });
   const count = h("input", { type: "number", min: 1, max: 200, value: 30, style: "width:70px" });
@@ -798,7 +947,7 @@ async function plannerTab(view) {
     const steps = rows.filter(r => r.on).map(r => { const s = { ...r.s }; delete s._d; return s; });
     try {
       const res = await api("/api/plan", { method: "POST", headers: { "Content-Type": "application/json", "X-Zugzug": "1" }, body: JSON.stringify({ name: nameIn.value, steps }) });
-      msg.replaceChildren(h("div", { class: "note" }, `Saved ${res.steps} steps as "${nameIn.value}". In game: /reload, then /lev route use ${nameIn.value}. (First time only: restart the game so it sees the new file.)`));
+      msg.replaceChildren(h("div", { class: "note" }, `Saved ${res.steps} steps as "${nameIn.value}". In game: /reload, then /zug route use ${nameIn.value}. (First time only: restart the game so it sees the new file.)`));
     } catch (e) {
       msg.replaceChildren(h("div", { class: "note bad" }, "Could not save: " + e.message));
     }
@@ -814,6 +963,50 @@ async function plannerTab(view) {
 
 // ------------------------------------------------------------------ professions
 
+// What pays: crafts and materials, from the auction house prices the addon
+// read on this realm (Auction.lua: lowest unit buyout, how many listings).
+// Profit = the product's price minus its materials at their prices; a craft
+// with a material nobody sells is left out of the ranking (no price to use).
+async function moneyCard(c, prof, idOf, snap) {
+  const box = h("section", { class: "why money" }, h("h2", {}, "Money from professions"));
+  let all = {};
+  try { all = await api("/api/prices"); } catch { }
+  const ch = (c && c.db.char) || {};
+  const pr = all[`${ch.realm}-${ch.faction}`];
+  if (!pr || !pr.items) {
+    box.append(h("p", { class: "sub" }, "No auction house prices yet. At the auction house, press Read prices on its window (or /zug prices), then Sync. The game allows one full read every 15 minutes."));
+    return box;
+  }
+  const price = name => { const id = idOf(name); const e = id && pr.items[id]; return e && e.p > 0 ? e : null; };
+  const mine = new Set(snap.map(p => p.name));
+  const crafts = [], seen = new Set(), mats = new Map();
+  for (const [profName, steps] of Object.entries(prof.guides || {})) {
+    for (const s of steps) {
+      for (const m of s.mats || []) { const e = price(m[1]); if (e) mats.set(m[1], e); }
+      if (!s.item || seen.has(s.item)) continue;
+      seen.add(s.item);
+      const out = price(s.item);
+      if (!out) continue;
+      let cost = 0, ok = true;
+      for (const m of s.mats || []) { const e = price(m[1]); if (!e) { ok = false; break; } cost += m[0] * e.p; }
+      if (ok) crafts.push({ profName, item: s.item, sell: out.p, cost, profit: out.p - cost, listings: out.n, skill: s[1] });
+    }
+  }
+  crafts.sort((a, b) => b.profit - a.profit);
+  const top = crafts.filter(x => x.profit > 0).slice(0, 12);
+  const goodMats = [...mats.entries()].sort((a, b) => b[1].p - a[1].p).slice(0, 10);
+  box.append(h("p", { class: "sub" }, `From the auction house on ${ch.realm} (${ch.faction}), read ${ago(pr.at)}: ${fmtNum(pr.listings || 0)} listings. Prices move; read again before a big buy.`));
+  if (top.length) {
+    box.append(h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Craft"), h("th", {}, "Profession"), h("th", { class: "num" }, "Sells for"), h("th", { class: "num" }, "Materials"), h("th", { class: "num" }, "Profit"), h("th", { class: "num" }, "Listed"))),
+      h("tbody", {}, top.map(x => h("tr", { class: mine.has(x.profName) ? "sel" : "" },
+        h("td", {}, ilink(idOf(x.item), x.item)), h("td", { class: "muted" }, `${x.profName}${mine.has(x.profName) ? " (yours)" : ""}, skill ${x.skill}`),
+        h("td", { class: "num" }, G.money(x.sell)), h("td", { class: "num" }, G.money(x.cost)), h("td", { class: "num" }, G.money(x.profit)), h("td", { class: "num" }, String(x.listings)))))));
+  } else box.append(h("p", { class: "sub" }, "None of the crafts with every material on sale makes a profit at today's prices."));
+  if (goodMats.length) box.append(h("h3", {}, "Worth gathering"), h("p", { class: "sub" }, "The materials from the profession plans that sell for the most each:"),
+    h("ul", { class: "notes" }, goodMats.map(([name, e]) => h("li", {}, h("span", { class: "fig" }, G.money(e.p)), " ", ilink(idOf(name), name), h("span", { class: "muted" }, `  ${e.n} listed`)))));
+  return box;
+}
+
 async function profTab(view) {
   const c = S.char;
   const prof = await cached("prof", "/api/prof");
@@ -822,6 +1015,7 @@ async function profTab(view) {
   const items = prof.items || {};
   const idOf = name => items[String(name).toLowerCase()];
   if (!snap.length) view.append(h("div", { class: "empty" }, "No professions saved for this character yet (the addon saves them on login and when skills change; then /reload). Plans for every profession are below."));
+  view.append(await moneyCard(c, prof, idOf, snap));
   const shopping = {};
   const g = h("div", { class: "grid prof" });
   view.append(g);
@@ -876,11 +1070,20 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { } },
 };
 
-async function gearTab(view) {
+// The character sheet: name and the paper doll in the centre (center), the
+// gear cards in the right panel's Gear tab (side), the character's numbers in
+// its Details tab (details).
+async function gearScreen(center, side, details) {
   const c = S.char;
   const gear = c && c.db.gear;
-  if (!gear) return view.append(h("div", { class: "empty" }, "No gear saved for this character yet. The addon saves it when you log in or change equipment; then /reload."));
-  const snap = c.db.char || {};
+  const snap = (c && c.db.char) || {};
+  const title = h("div", { class: "charname" }, fullName(snap, c) || "?",
+    h("span", { class: "charsub" }, [snap.level ? `level ${snap.level}` : null, raceName(snap.race), (snap.class || "").toLowerCase(), snap.realm ? `· ${snap.realm}` : null].filter(Boolean).join(" ")));
+  if (!gear) {
+    center.append(title, h("div", { class: "empty" }, "No gear saved for this character yet. The addon saves it when you log in or change equipment; then /reload."));
+    side.append(h("div", { class: "empty" }, "Gear appears once the game has saved it."));
+    return;
+  }
   const [known, weights, maps] = await Promise.all([cached("items", "/api/items"), cached("weights", "data/weights.json"), cached("maps", "/api/maps")]);
   let routeSteps = [];
   if (c.db.route) { try { routeSteps = (await cached("route:" + c.db.route, `/api/route?name=${encodeURIComponent(c.db.route)}`)).steps; } catch { } }
@@ -902,10 +1105,8 @@ async function gearTab(view) {
   const mstat = h("p", { class: "sub" });
   const lookBox = h("details", { class: "look" });
   const sheetSlot = h("div");
-  const box = h("div");
-  const title = h("div", { class: "charname" }, snap.name || c.name,
-    h("span", { class: "charsub" }, `level ${snap.level ?? "?"} ${raceName(snap.race)} ${(snap.class || "").toLowerCase()}`));
-  view.append(h("section", { class: "hero gearhero" }, title, sheetSlot, h("div", { class: "modelnotes" }, mstat, lookBox)), box);
+  const box = side;
+  center.append(title, sheetSlot, h("div", { class: "modelnotes" }, mstat, lookBox));
 
   const draw = () => {
     box.replaceChildren();
@@ -952,18 +1153,21 @@ async function gearTab(view) {
     }
 
     // the sheet: what you wear, around the model (the stage moves, it is not redrawn)
-    sheetSlot.replaceChildren(G.sheet(worn, ups, stage));
+    sheetSlot.replaceChildren(G.sheet(worn, ups, stage, true));
 
     const g = h("div", { class: "grid" });
     box.append(g);
+    const dg = h("div", { class: "grid" });
+    details.replaceChildren(dg);
     const top = trees.slice().sort((a, b) => (b.points || 0) - (a.points || 0))[0];
     const durs = Object.values(worn).filter(it => it.durMax > 0).map(it => ({ it, f: it.dur / it.durMax }));
     const worst = durs.sort((a, b) => a.f - b.f)[0];
     const s = gear.stats || {};
     const ch = h("section", { class: "card" }, h("h2", {}, "Character"));
-    g.append(ch);
+    dg.append(ch);
     ch.append(facts([
-      ["Character", `${snap.name || c.name}, level ${snap.level ?? "?"} ${raceName(snap.race)} ${(snap.class || "").toLowerCase()}`],
+      ["Name", fullName(snap, c)],
+      ["Character", `level ${snap.level ?? "?"} ${raceName(snap.race)} ${(snap.class || "").toLowerCase()}${snap.faction ? `, ${snap.faction}` : ""}`],
       ["Talents", !trees.length ? "not saved"
         : !trees.some(t => t.name) ? "no spec chosen yet"
         : trees.filter(t => t.name).map(t => `${t.name} ${t.points || 0}`).join(", ") + (top && top.points ? "" : " (no points yet)")],
@@ -1027,14 +1231,14 @@ async function gearTab(view) {
     // the weights themselves
     const wc = h("section", { class: "card" }, h("h2", {}, "Stat weights"),
       h("p", { class: "sub" }, set ? `${set.title}${set.spec ? `, ${set.spec.trim()}` : ""} (${set.kind}, levels ${set.min} to ${set.max}). A point of each stat is worth this much; an item's score is the sum.` : "None for this choice."));
-    g.append(wc);
+    dg.append(wc);
     if (w) wc.append(h("table", {}, h("tbody", {}, Object.entries(w).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
       h("tr", {}, h("td", {}, G.statLabel(k)), h("td", { class: "num" }, String(v)))))));
     wc.append(h("p", { class: "sub" }, "From RestedXP Guides (CC BY-NC-SA 4.0), scored the way its ItemUpgrades does."));
 
     const cnt = (o) => Object.keys(o || {}).length;
     const kc = h("section", { class: "card" }, h("h2", {}, "What the game has shown you"));
-    g.append(kc);
+    dg.append(kc);
     kc.append(facts([
       ["Items", String(cnt(known.items))],
       ["Quests with item rewards", String(cnt(known.quests))],
@@ -1059,7 +1263,7 @@ const LOOK_PICKER = false;
 async function modelPanel(snap, worn, stage, mstat, lookBox) {
   if (!I.picturesOn()) { // no Wowhead pictures (Settings): the 3D character is in the game
     stage.classList.add("noart"); lookBox.hidden = true;
-    stage.replaceChildren(h("div", {}, h("p", {}, "Your character in 3D is in the game:"), h("p", {}, h("code", {}, "/lev model")), h("p", { class: "muted" }, "(or turn on pictures in Settings)")));
+    stage.replaceChildren(h("div", {}, h("p", {}, "Your character in 3D is in the game:"), h("p", {}, h("code", {}, "/zug model")), h("p", { class: "muted" }, "(or turn on pictures in Settings)")));
     mstat.textContent = "";
     return;
   }
@@ -1130,11 +1334,11 @@ async function gearNotes(c) {
       const bag = G.arr(gear.bags).map(it => G.bestChoice([it], worn, w, cw.cls, cw.lvl)).filter(p => p && p.gain != null && (p.it.req || 1) <= cw.lvl);
       if (bag.length) out.push([String(bag.length), ` item${bag.length > 1 ? "s" : ""} in your bags ${bag.length > 1 ? "are upgrades" : "is an upgrade"}: equip ${bag.map(p => p.it.name).join(", ")}.`]);
       const stops = await gearStops(c);
-      if (stops.length) out.push([String(stops.length), ` more upgrade${stops.length > 1 ? "s are" : " is"} known from quest rewards and merchants. The Gear tab lists them; the Map tab shows where.`]);
+      if (stops.length) out.push([String(stops.length), ` more upgrade${stops.length > 1 ? "s are" : " is"} known from quest rewards and merchants. Character > Gear lists them; Map & Quests shows where.`]);
     }
   }
   const off = G.arr(c.db.questLog).length ? await offRoute(c) : 0;
-  if (off) out.push([String(off), ` quest${off > 1 ? "s" : ""} in your log ${off > 1 ? "are" : "is"} not on your route (the Quests tab lists them).`]);
+  if (off) out.push([String(off), ` quest${off > 1 ? "s" : ""} in your log ${off > 1 ? "are" : "is"} not on your route (Map & Quests lists them).`]);
   return out;
 }
 async function offRoute(c) {
@@ -1189,9 +1393,26 @@ async function charWeights(c) {
 
 // ------------------------------------------------------------------ quests
 
-async function questsTab(view) {
+// The quest log beside the map, the way the game's Map & Quest Log lists it:
+// grouped by zone, "[level] Title" in the game's difficulty colours, the
+// objectives under it, a tick when it is ready to turn in. Click a quest for
+// its words, reward and route step, and the map shows where it happens.
+// The game's quest colours (QuestDifficultyColors) against your level; grey is
+// Classic's "no XP" level (approximate: level - floor(level / 10) - 5 to 39).
+function questColor(qlvl, plvl) {
+  if (!qlvl) return "qd-yellow";
+  const d = qlvl - plvl;
+  const grey = plvl <= 5 ? 0 : plvl <= 39 ? plvl - Math.floor(plvl / 10) - 5 : plvl - Math.floor(plvl / 5) - 1;
+  if (d >= 5) return "qd-red";
+  if (d >= 3) return "qd-orange";
+  if (d >= -2) return "qd-yellow";
+  if (qlvl > grey) return "qd-green";
+  return "qd-grey";
+}
+
+async function questLog(box) {
   const c = S.char;
-  if (!c || !c.db.questLog) return view.append(h("div", { class: "empty" }, "No quest log saved for this character yet. The addon saves it as quests change; then /reload."));
+  if (!c || !c.db.questLog) return box.append(h("div", { class: "empty" }, "No quest log saved for this character yet. The addon saves it as quests change; then /reload."));
   const log = G.arr(c.db.questLog);
   const known = await cached("items", "/api/items");
   let steps = [];
@@ -1204,61 +1425,58 @@ async function questsTab(view) {
     if (!onRoute.has(s.q)) onRoute.set(s.q, i + 1);
   });
   const lvl = (c.db.char || {}).level || 1;
-  const ready = log.filter(e => e.done), off = log.filter(e => !onRoute.has(e.q));
-  const next = log.filter(e => turnin.get(e.q) >= step).sort((a, b) => turnin.get(a.q) - turnin.get(b.q))[0];
-
-  view.append(h("section", { class: "hero" },
-    h("div", { class: "eta" }, `${log.length} quests in your log`,
-      h("span", { class: "muted" }, `  ${ready.length} ready to turn in, ${off.length} not on your route`)),
-    next ? h("div", { class: "nextstop" }, h("span", { class: "mark" }, "►"), h("span", { class: "muted" }, "Next turn-in"),
-      qlink(next.q, next.title), h("span", { class: "muted" }, `route step ${turnin.get(next.q)}, ${turnin.get(next.q) - step} steps from here`)) : null));
-
-  const choices = q => {
-    const r = (known.quests || {})[q];
-    const ids = r ? G.arr(r.choice) : [];
-    return ids.length ? ids.map(id => (known.items || {})[id]).filter(Boolean) : null;
-  };
+  const ready = log.filter(e => e.done);
   const cw = await charWeights(c);
   const worn = (c.db.gear && c.db.gear.slots) || {};
-  // what each quest asks, in the quest's own words (Wowhead's Forever tooltips, cached by the companion)
   let tips = {};
   if (I.picturesOn()) { try { tips = await api(`/api/quests?ids=${log.map(e => e.q).join(",")}`); } catch { } }
-  // the game's own words first (the addon saves them), else Wowhead's
-  const asks = q => { const e = log.find(x => x.q === q); return (e && e.ask) || questAsk(tips[q]); };
-  const row = e => {
-    const objs = G.arr(e.objs);
-    const t = turnin.get(e.q);
-    const opts = choices(e.q);
-    return h("tr", { class: e.done ? "sel" : "" },
-      h("td", {}, qlink(e.q, e.title || `quest ${e.q}`), h("div", { class: "muted" }, `level ${e.level ?? "?"}${e.level && e.level <= lvl - 5 ? ", low for you" : ""}`),
-        asks(e.q) ? h("div", { class: "qtext" }, asks(e.q)) : null),
-      h("td", {}, e.done ? h("span", { class: "up" }, "ready to turn in") : objs.length ? objs.map(o => h("div", { class: "obj" },
-        h("span", { class: o.done ? "muted" : "" }, o.text || ""),
-        o.need > 1 ? h("div", { class: "meter" }, h("div", { style: `width:${Math.min(100, (o.have || 0) / o.need * 100)}%` })) : null)) : h("span", { class: "muted" }, "--")),
-      h("td", { class: "muted" }, t ? `turn in at step ${t}` : onRoute.has(e.q) ? `on the route (step ${onRoute.get(e.q)})` : "not on your route"),
-      h("td", {}, opts && opts.length > 1 ? (() => {
-        const p = G.bestChoice(opts, worn, cw.set && cw.set.w, cw.cls, cw.lvl);
-        return h("span", {}, "pick ", G.ilink(p.it), h("div", { class: "muted" }, pickWhy(p)));
-      })() : opts && opts.length ? h("span", {}, G.ilink(opts[0])) : h("span", { class: "muted" }, "--")));
+  const asks = e => e.ask || questAsk(tips[e.q]);
+  const reward = q => {
+    const r = (known.quests || {})[q];
+    const opts = (r ? G.arr(r.choice) : []).map(id => (known.items || {})[id]).filter(Boolean);
+    if (opts.length > 1) { const p = G.bestChoice(opts, worn, cw.set && cw.set.w, cw.cls, cw.lvl); return p ? h("div", { class: "qmore" }, "Pick ", G.ilink(p.it), h("span", { class: "muted" }, ` ${pickWhy(p)}`)) : null; }
+    if (opts.length) return h("div", { class: "qmore" }, "Reward ", G.ilink(opts[0]));
+    return null;
   };
+  box.append(h("div", { class: "qhead" }, h("b", {}, "Quest log"), h("span", { class: "muted" }, `${log.length} quests, ${ready.length} ready`)));
   const zones = new Map();
   for (const e of log) { const z = e.zone || "Other"; if (!zones.has(z)) zones.set(z, []); zones.get(z).push(e); }
-  // Ask (ask.go): a question about your quests, answered by a local AI model from your own data
-  view.append(askPanel());
-
-  const grid = h("div", { class: "grid" });
-  view.append(grid);
-  const card = h("section", { class: "card wide" }, h("h2", {}, "Quest log"),
-    h("p", { class: "sub" }, `As the game last saved it, grouped as in your log. Rewards appear once a quest giver has shown them; picks use your Gear tab's weights (${cw.spec || "class"}).`));
-  grid.append(card);
-  card.append(h("table", { class: "quests" }, h("thead", {}, h("tr", {}, h("th", {}, "Quest"), h("th", {}, "Progress"), h("th", {}, "Route"), h("th", {}, "Reward"))),
-    [...zones.entries()].map(([z, list]) => h("tbody", {}, h("tr", { class: "zone" }, h("td", { colspan: 4 }, z)), list.map(row)))));
-  if (off.length) {
-    const o = h("section", { class: "card wide" }, h("h2", {}, "Not on your route"),
-      h("p", { class: "sub" }, "These take log space and the route will not send you to them. Keep the ones you plan to do; abandoning is your call."));
-    grid.append(o);
-    o.append(h("ul", { class: "notes" }, off.map(e => h("li", {}, qlink(e.q, e.title || `quest ${e.q}`), h("span", { class: "muted" }, ` level ${e.level ?? "?"}, ${e.zone || ""}`)))));
-  }
+  let open = null;
+  const entry = e => {
+    const objs = G.arr(e.objs);
+    const tStep = turnin.get(e.q);
+    const where = tStep ? `turn in at route step ${tStep}${tStep >= step ? `, ${tStep - step} from here` : ""}` : onRoute.has(e.q) ? `on your route (step ${onRoute.get(e.q)})` : "not on your route";
+    const more = h("div", { class: "qdetail", hidden: true },
+      asks(e) ? h("p", { class: "qtext" }, asks(e)) : null,
+      h("div", { class: "muted" }, where),
+      reward(e.q),
+      h("a", { href: `${WOWHEAD}/quest=${e.q}`, target: "_blank", rel: "noopener", class: "muted" }, "on Wowhead"));
+    const btn = h("button", { type: "button", class: "qtitle " + questColor(e.level, lvl), "aria-expanded": "false" },
+      `[${e.level ?? "?"}] ${e.title || "quest " + e.q}`);
+    const row = h("div", { class: "qentry" + (e.done ? " done" : "") + (onRoute.has(e.q) ? "" : " off") },
+      h("span", { class: "qcheck", "aria-label": e.done ? "ready to turn in" : "" }, e.done ? "✓" : ""), btn,
+      h("ul", { class: "qobjs" }, e.done ? h("li", { class: "up" }, "Ready to turn in") : objs.map(o => h("li", { class: o.done ? "muted" : "" }, `- ${o.text || ""}`))),
+      more);
+    btn.addEventListener("click", async () => {
+      const was = !more.hidden;
+      if (open && open !== more) { open.hidden = true; open.parentElement.querySelector(".qtitle").setAttribute("aria-expanded", "false"); open.parentElement.classList.remove("focus"); }
+      more.hidden = was; btn.setAttribute("aria-expanded", String(!was)); row.classList.toggle("focus", !was);
+      open = was ? null : more;
+      if (!was && mapShow) {
+        const places = await questPlaces(c, e.q);
+        const maps = await cached("maps", "/api/maps");
+        const first = places.find(p => p.map && maps[p.map]) || null;
+        await mapShow(first ? first.map : null, e.q);
+      }
+    });
+    return row;
+  };
+  for (const [z, list] of zones) box.append(h("section", { class: "qzone" }, h("h3", {}, z), list.map(entry)));
+  // Ask (ask.go): set up here; once a model is picked the peon answers (bottom right)
+  try {
+    const st = await api("/api/ask");
+    box.append(st.ready ? h("p", { class: "sub qask" }, `Stuck on one? Ask the peon (bottom right): ${st.model} answers from your log.`) : askPanel());
+  } catch { }
 }
 
 function askPanel() {
@@ -1270,7 +1488,7 @@ function askPanel() {
     if (!st.ready) {
       const models = G.arr(st.models);
       if (!models.length) {
-        box.replaceChildren(head, h("p", { class: "sub" }, "Questions about your quests are answered by an AI model running on this PC, from your own quest log, route and the quests' text. None was found: install Ollama (ollama.com) and a small model, then reload this page. Until then, /lev why in game explains the current step."));
+        box.replaceChildren(head, h("p", { class: "sub" }, "Questions about your quests are answered by an AI model running on this PC, from your own quest log, route and the quests' text. None was found: install Ollama (ollama.com) and a small model, then reload this page. Until then, /zug why in game explains the current step."));
         return;
       }
       const pick = h("select", {}, models.map(m => h("option", { value: m }, m)));
@@ -1310,8 +1528,8 @@ function questAsk(tip) {
 
 // ------------------------------------------------------------------ live
 
-// The Overview's live panel: what the game's chat log says happened since the
-// last save, refreshed every 3 s while the Overview is open.
+// The live panel (Character > Now): what the game's chat log says happened
+// since the last save, refreshed every 3 s while it is on the page.
 let liveTimer = null;
 function liveFeed(box, snap, db) {
   clearTimeout(liveTimer);
@@ -1325,7 +1543,7 @@ function liveFeed(box, snap, db) {
     const checks = L ? G.arr(L.events).filter(e => e.kind === "check") : [];
     const head = h("h2", {}, "Since the last save");
     if (!L || !L.file) {
-      box.replaceChildren(head, h("p", { class: "sub" }, "Live updates are off. In game, /lev live on turns them on (the game then writes its chat to Logs\\WoWChatLog.txt on this PC), or press Sync on the addon's window to save now."));
+      box.replaceChildren(head, h("p", { class: "sub" }, "Live updates are off. In game, /zug live on turns them on (the game then writes its chat to Logs\\WoWChatLog.txt on this PC), or press Sync on the addon's window to save now."));
     } else {
       const lv = shown.filter(e => e.kind === "level").pop();
       const xpNow = (snap.xp || 0) + (L.xp || 0);
@@ -1334,7 +1552,7 @@ function liveFeed(box, snap, db) {
       const quests = shown.filter(e => e.kind === "accept" || e.kind === "complete");
       box.replaceChildren(head,
         h("p", { class: "sub" }, `${sum}. ${quests.length ? `${quests.length} quest event${quests.length > 1 ? "s" : ""}. ` : ""}From the game's chat log, last written ${ago(L.written)}.`
-          + (checks.length ? ` Your /lev live check reached it.` : "")),
+          + (checks.length ? ` Your /zug live check reached it.` : "")),
         shown.length ? h("ul", { class: "notes" }, shown.slice(-8).reverse().map(e => h("li", {}, h("span", { class: "fig" }, LABEL[e.kind] || e.kind), " ", e.text))) : null);
     }
     liveTimer = setTimeout(tick, 3000);
@@ -1342,9 +1560,116 @@ function liveFeed(box, snap, db) {
   tick();
 }
 
+// ------------------------------------------------------------------ screens
+
+// Character: the game's character pane. You in the middle, your progress on
+// the left, gear / professions / details on the right.
+async function characterTab(view) {
+  const c = S.char;
+  if (!c) return view.append(h("div", { class: "empty" }, "No character data yet. Log in with the addon enabled, then /reload."));
+  await notices(view);
+  const center = h("section", { class: "charcenter" });
+  const gearBox = h("div"), detailsBox = h("div");
+  const left = tabbedPanel("left", [
+    { key: "now", label: "Now", build: progress },
+    { key: "notes", label: "Notes", build: sessionNotes },
+  ], "pleft");
+  const right = tabbedPanel("right", [
+    { key: "gear", label: "Gear", build: async b => b.append(gearBox) },
+    { key: "prof", label: "Professions", build: profTab },
+    { key: "details", label: "Details", build: async b => b.append(detailsBox) },
+  ], "pright");
+  view.append(h("div", { class: "charscreen" }, left, center, right));
+  await gearScreen(center, gearBox, detailsBox);
+}
+
+// Map & Quests: the zone map and the quest log side by side.
+async function worldTab(view) {
+  const map = h("div", { class: "worldmap" }), log = h("aside", { class: "qlog", "aria-label": "Quest log" });
+  view.append(h("div", { class: "worldscreen" }, map, log));
+  mapShow = null;
+  // the log is quick, the map can take a few seconds (its art): both at once
+  const wait = h("p", { class: "sub" }, "Drawing the map...");
+  map.append(wait);
+  const drawn = h("div");
+  await Promise.all([questLog(log), mapTab(drawn).then(() => wait.replaceWith(drawn))]);
+}
+
+// Plan & Runs: what the numbers say (this character, recorded runs), then
+// what to do about it (how you play, the route, the planner).
+async function planTab(view) {
+  view.append(h("h2", { class: "screenhead" }, "Analytics"));
+  if (S.char) { const g = h("div", { class: "grid analytics" }); view.append(g); charAnalytics(g); }
+  const runs = h("div", { class: "runs" });
+  view.append(h("h3", {}, "Recorded runs"), runs);
+  await runsTab(runs);
+  view.append(h("h2", { class: "screenhead" }, "Planning"));
+  await plannerTab(view);
+}
+
+// About: what this is, how to use it, what to do when something is wrong,
+// privacy, credits and licenses.
+async function aboutTab(view) {
+  let version = "";
+  try { version = (await api("/api/update")).current || ""; } catch { }
+  const cmd = (c, what) => h("tr", {}, h("td", {}, h("code", {}, c)), h("td", {}, what));
+  const sec = (title, ...kids) => h("section", { class: "about" }, h("h2", {}, title), ...kids);
+  view.append(h("div", { class: "aboutgrid" },
+    sec("zugzug_leveler",
+      h("p", {}, "A leveling addon for World of Warcraft: Forever, with this page beside it. The addon shows where to go next, finds the shortest order for your quests from where you stand, and says why. The page shows what the game saved: your character, your quests on the map, and how your runs went."),
+      h("p", { class: "sub" }, `${version ? `Version ${version}. ` : ""}Not affiliated with Blizzard Entertainment, RestedXP or any guide author. Free, for personal use.`)),
+    sec("Getting started",
+      h("ol", { class: "steps-help" },
+        h("li", {}, "Start the game with the addon on. A new character is asked how it wants to play and offered its route."),
+        h("li", {}, "Follow the arrow. The window shows the step; ", h("code", {}, "/zug why"), " says why it wants it."),
+        h("li", {}, "A detour of your own (a flight path, waiting for a friend)? The pause button beside Sync: nothing is timed until you resume."),
+        h("li", {}, "Press Sync on the window (or ", h("code", {}, "/zug sync"), ") and this page shows everything as it is now."),
+        h("li", {}, "Settings: ", h("code", {}, "/zug options"), ", or Esc > Options > AddOns > zugzug_leveler."))),
+    sec("This page",
+      h("dl", { class: "facts" },
+        h("dt", {}, "Character"), h("dd", {}, "You in the middle with what you wear. Left: where you are on the climb, the next stop and why. Right: gear upgrades and what to pick, professions and what pays, your numbers."),
+        h("dt", {}, "Map & Quests"), h("dd", {}, "The zone with your route, danger, gear stops and quests to pick up; your quest log beside it. Click a quest to see it on the map."),
+        h("dt", {}, "Plan & Runs"), h("dd", {}, "Where your time goes, recorded runs compared, how you play, what the route includes, and a planner that sends a route to the addon."),
+        h("dt", {}, "The peon"), h("dd", {}, "Bottom right. He says what the coach says, out loud (the ♪ button quiets him), and answers questions when a helper model is set up (Map & Quests). Few words, right facts. Click him."))),
+    sec("Commands",
+      h("table", { class: "cmds" }, h("tbody", {},
+        cmd("/zug", "show or hide the window"),
+        cmd("/zug why", "what the step wants and why"),
+        cmd("/zug pause · /zug resume", "a detour of your own"),
+        cmd("/zug route list · /zug route use <name>", "pick a route"),
+        cmd("/zug skip · /zug back · /zug step <n>", "move along the route"),
+        cmd("/swap", "set a step aside until you level up"),
+        cmd("/zug questlog", "no guide: your own quests in the shortest order"),
+        cmd("/zug talents", "the talent to take next"),
+        cmd("/zug prices", "read the auction house (at the auction house)"),
+        cmd("/way x y", "your own arrow target"),
+        cmd("/zug peon on|off", "the talking peon in game (off by default)"),
+        cmd("/zug help", "everything else")))),
+    sec("When something is wrong",
+      h("ul", { class: "notes" },
+        h("li", {}, h("code", {}, "/zug why"), " explains what the addon thinks the step is."),
+        h("li", {}, h("code", {}, "/zug errors"), " makes a report to copy and send. It has no character name in it."),
+        h("li", {}, "The page is behind the game? It shows what the game last saved: press Sync, or ", h("code", {}, "/zug live on"), " for updates between saves."),
+        h("li", {}, "The page keeps copies of your saves. If one is ever wiped, Character offers to restore it."))),
+    sec("Privacy",
+      h("p", {}, "Everything stays on this PC. The page reads the addon's saves and the game's chat log, nothing else."),
+      h("p", { class: "sub" }, "Two things reach outside, and both are off until you switch them on in Settings: pictures from Wowhead, and the new-version check (GitHub). Phone mode answers only a phone you pair.")),
+    sec("Credits and licenses",
+      h("ul", { class: "notes credits" },
+        h("li", {}, "Routes, danger data, talent guides and stat weights: ", h("a", { href: "https://github.com/RestedXP/RXPGuides", target: "_blank", rel: "noopener" }, "RestedXP Guides"), ", CC BY-NC-SA 4.0 (credit RestedXP, non-commercial, share alike)."),
+        h("li", {}, "Quest facts and loot lists: ", h("a", { href: "https://github.com/ATTWoWAddon/AllTheThings", target: "_blank", rel: "noopener" }, "AllTheThings"), ", MIT."),
+        h("li", {}, "Profession data: ProfessionLevelingGuide, MIT."),
+        h("li", {}, "The peon: ", h("a", { href: "https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868", target: "_blank", rel: "noopener" }, "“[Warcraft] - Orc peon”"), " by ", h("a", { href: "https://sketchfab.com/Northcliffe", target: "_blank", rel: "noopener" }, "Northcliffe"), ", ", h("a", { href: "http://creativecommons.org/licenses/by-nc/4.0/", target: "_blank", rel: "noopener" }, "CC BY-NC 4.0"), ", a fan-made remake of Blizzard's character; his lines are the Warcraft III peon's, spoken in a voice from a friend of the project's impressions, used with permission (rendered with Chatterbox TTS). Drawn with three.js (MIT)."),
+        h("li", {}, "Fonts: BigBlueTerm437 (VileR, Nerd Fonts, CC BY-SA 4.0), UnifrakturMaguntia (SIL OFL 1.1). Themes from panefx and their designers."),
+        h("li", {}, "Quest and item links open Wowhead's Forever pages. With pictures on, the 3D character, icons and maps come from Wowhead (World of Warcraft art is Blizzard's); jQuery (MIT) runs that viewer. Phone pairing draws its QR code with qrcode-generator (MIT)."),
+        h("li", {}, "World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.")))));
+}
+
 // ------------------------------------------------------------------ shell
 
-const TABS = { overview, gear: gearTab, quests: questsTab, runs: runsTab, map: mapTab, planner: plannerTab, prof: profTab };
+const TABS = { character: characterTab, world: worldTab, plan: planTab, about: aboutTab };
+// the old seven tabs' links still land somewhere sensible
+const OLD_TABS = { overview: "character", gear: "character", prof: "character", quests: "world", map: "world", runs: "plan", planner: "plan" };
 
 async function loadChar() {
   if (!S.charKey) { S.char = null; return; }
@@ -1353,15 +1678,73 @@ async function loadChar() {
   S.char = { ...meta, db };
 }
 
+// The helper (peon.js): a Warcraft III style portrait in the corner. Loaded
+// after the page, so a slow or missing WebGL never holds the page up.
+let peon = null, peonSaid = null;
+let peonLines = { tabs: {} };
+import("./peon.js").then(async m => {
+  peonLines = await m.loadLines();
+  let voice = false;
+  try { voice = (await api("/api/voice")).on; } catch { }
+  peon = m.helper(document.getElementById("helper"), { onPoke: peonAdvice, voice });
+  peonUpdate();
+  // with a helper model set up (ask.go, Map & Quests), questions go to the peon
+  try {
+    const st = await api("/api/ask");
+    if (st.ready) peon.enableAsk(st.model, async q => {
+      if (!S.charKey) throw new Error("No character yet.");
+      const a = await api(`/api/ask?key=${encodeURIComponent(S.charKey)}&q=${encodeURIComponent(q)}`);
+      return String(a.answer || "").trim();
+    });
+  } catch { }
+})
+  .catch(e => console.warn("peon:", e.message));
+// The coach's words as the peon says them: caveman efficiency, the facts kept.
+// "Step 337 of 551: Do Disrupt the Attacks (55.6, 26.6)" -> "Do: Disrupt the Attacks. At 55.6 26.6."
+function peonSpeak(line) {
+  let s = String(line || "").trim().replace(/^Step \d+ of \d+:\s*/, "");
+  const at = s.match(/\(([\d.]+),\s*([\d.]+)\)/);
+  s = s.replace(/\s*\([\d.]+,\s*[\d.]+\)/, "").replace(/[.\s]+$/, "");
+  const VERB = [[/^Accept /, "Get quest: "], [/^Turn in /, "Turn in: "], [/^Do /, "Do: "], [/^Go to /, "Go: "], [/^Kill /, "Kill: "], [/^Train /, "Train: "]];
+  for (const [re, w] of VERB) if (re.test(s)) { s = s.replace(re, w); break; }
+  return `${s}.${at ? ` At ${at[1]} ${at[2]}.` : ""}`;
+}
+
+// what the peon says first: what the addon's coach said (Coach.lua), or a tip for the tab
+function peonAdvice() {
+  const db = S.char && S.char.db || {};
+  if (db.paused) return peonLines.paused;
+  if (S.tab !== "character" && peonLines.tabs[S.tab]) return peonLines.tabs[S.tab];
+  const why = G.arr(db.coach && db.coach.why);
+  if (why.length) return peonSpeak(why[0]);
+  if (!db.route) return peonLines.noroute;
+  return null;
+}
+async function peonUpdate() {
+  if (!peon) return;
+  const db = S.char && S.char.db || {};
+  const coach = db.coach || {};
+  let mood = db.paused ? "paused" : (coach.activity && Date.now() / 1000 - (coach.at || 0) < 3600 ? coach.activity : "idle");
+  peon.mood(mood);
+  const snap = db.char || {};
+  let steps = 0;
+  if (db.route) { try { steps = (await cached("route:" + db.route, `/api/route?name=${encodeURIComponent(db.route)}`)).steps.length; } catch { } }
+  peon.bars(snap.xp || 0, snap.xpMax || 0, Math.min(db.step || 1, steps), steps);
+  const line = peonAdvice() || (peonLines.ready || ["Something need doing?"])[0];
+  if (line !== peonSaid) { peonSaid = line; peon.say(line); }
+}
+
 async function render() {
+  peonUpdate();
   const view = document.getElementById("view");
-  M.stop(); // the 3D viewer, if the Gear tab had one
+  M.stop(); // the 3D viewer, if the character screen had one
   view.replaceChildren();
   try { await TABS[S.tab](view); } catch (e) { view.append(h("div", { class: "note bad" }, "Something went wrong: " + e.message)); console.error(e); }
 }
 
 function go(tab) {
-  if (!TABS[tab]) tab = "overview";
+  tab = OLD_TABS[tab] || tab;
+  if (!TABS[tab]) tab = "character";
   S.tab = tab;
   if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
   for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
@@ -1426,6 +1809,9 @@ function applyTheme(t) {
   // item quality: the game's own colours on dark grounds, darker steps on light
   (dark ? ["#9d9d9d", fg, "#1eff00", "#3a8ee6", "#b45ef5", "#ff8000"] : ["#7d7d7d", fg, "#1e8a00", "#0062c4", "#8a2be2", "#c45f00"])
     .forEach((v, i) => set(`--q${i}`, v));
+  // quest difficulty, as the game colours it: its own on dark grounds, darker steps on light
+  (dark ? ["#808080", "#40c040", "#ffff00", "#ff8040", "#ff2020"] : ["#7d7d7d", "#2e8b2e", "#9a7b00", "#c25a14", "#c62828"])
+    .forEach((v, i) => set(`--qd${i}`, v));
 }
 
 async function themes() {
@@ -1436,7 +1822,7 @@ async function themes() {
   const group = (label, list) => list.length ? h("optgroup", { label }, list.map(t => h("option", { value: t.id }, t.name))) : null;
   const follow = data.panefx && byId[data.panefx] ? h("option", { value: "panefx" }, `Follow panefx (${byId[data.panefx].name})`) : null;
   pick.replaceChildren(...[
-    group("zugzugleveler", data.themes.filter(t => t.source === "zugzugleveler")),
+    group("zugzug_leveler", data.themes.filter(t => t.source === "zugzugleveler")),
     follow,
     group("Your panefx themes", data.themes.filter(t => t.source === "yours")),
     group("panefx", data.themes.filter(t => t.source === "panefx")),
@@ -1513,9 +1899,40 @@ function settingsPanel() {
         I.setPictures(cb.checked); S.cache = {}; msg.textContent = " Saved."; render();
       } catch (e) { msg.textContent = " " + e.message; }
     });
+    const up = h("input", { type: "checkbox" }); up.checked = !!st.updates;
+    const upMsg = h("span", { class: "muted" });
+    up.addEventListener("change", async () => {
+      try {
+        await api("/api/settings", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ updates: up.checked }) });
+        upMsg.textContent = " Saved."; render();
+      } catch (e) { upMsg.textContent = " " + e.message; }
+    });
+    // the peon's voice (voice.go): on/off, which voice, and the Chatterbox that renders new lines
+    let vc = null;
+    try { vc = await api("/api/voice"); } catch { }
+    const voiceBox = h("div", { class: "voiceset" });
+    if (vc) {
+      const von = h("input", { type: "checkbox" }); von.checked = !!vc.on;
+      const vname = h("input", { type: "text", value: vc.name || "peon", style: "width:140px" });
+      const vsrv = h("input", { type: "text", value: vc.server || "", placeholder: "http://127.0.0.1:8004", style: "width:260px" });
+      const vmsg = h("span", { class: "muted" });
+      const save = async () => {
+        try {
+          const r = await api("/api/voice", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ on: von.checked, name: vname.value.trim(), server: vsrv.value.trim() }) });
+          vmsg.textContent = ` Saved: ${r.cached} lines ready for ${r.name}. Reload the page to hear it.`;
+        } catch (e) { vmsg.textContent = " " + e.message; }
+      };
+      von.addEventListener("change", save);
+      voiceBox.append(h("label", {}, von, " The peon speaks", vmsg),
+        h("div", { class: "row" }, h("label", {}, "Voice ", vname), h("label", {}, "Chatterbox for new lines ", vsrv), h("button", { class: "btn", type: "button", onclick: save }, "Save")),
+        h("p", { class: "sub" }, `${vc.cached} of his lines are ready in "${vc.name}". Others are rendered by the Chatterbox above when it is running (leave it empty for the ready lines only), and kept on this PC. His fixed lines come with the companion (tools/peon_voice.py --ship makes them).`));
+    }
     box.replaceChildren(h("h2", {}, "Settings"),
       h("label", {}, cb, " Pictures from Wowhead: the 3D character, item icons, zone maps and quest text when the game has not given it.", msg),
-      h("p", { class: "sub" }, "Off by default. Wowhead's terms of use do not allow downloads by programs other than a web browser, which is how the companion would get them, so this is your call for your own PC. With it off the page uses only what your game reports, and the 3D character is in the game: /lev model."));
+      h("p", { class: "sub" }, "Off by default. Wowhead's terms of use do not allow downloads by programs other than a web browser, which is how the companion would get them, so this is your call for your own PC. With it off the page uses only what your game reports, and the 3D character is in the game: /zug model."),
+      h("label", {}, up, " Tell me when a new version is out.", upMsg),
+      h("p", { class: "sub" }, "Asks the project's GitHub page every few hours. Off by default: it is the only other thing that would reach outside this PC. A new version installs by running its setup over the old one; your saves stay."),
+      voiceBox);
   };
   btn.addEventListener("click", () => {
     box.hidden = !box.hidden;
@@ -1528,7 +1945,8 @@ settingsPanel();
 I.attachTips(); // the game's item tooltips, anywhere an item is shown
 I.watchIcons(document.getElementById("view"));
 for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => go(b.dataset.tab));
+window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t && (OLD_TABS[t] || t) !== S.tab) go(t); }); // links like the footer's #about
 document.getElementById("charPick").addEventListener("change", async e => { S.charKey = e.target.value; S.cache = {}; await loadChar(); render(); });
-S.tab = TABS[location.hash.slice(1)] ? location.hash.slice(1) : "overview";
+S.tab = location.hash.slice(1) || "character";
 api("/api/settings").then(st => I.setPictures(st.wowhead)).catch(() => { }).then(themes).then(() => refresh(true)).then(() => go(S.tab)).catch(e => { document.getElementById("view").append(h("div", { class: "note bad" }, "Cannot read the addon's data: " + e.message)); });
 poll();

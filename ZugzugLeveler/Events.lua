@@ -21,7 +21,8 @@ local function dispatch(event, ...)
     local ok, err = pcall(list[i], ...)
     if not ok and not reported[err] then
       reported[err] = true
-      C.print("|cffff6060error in %s:|r %s", event, tostring(err))
+      C.print("|cffff6060error in %s:|r %s  |cff999999/zug errors makes a report to copy|r", event, tostring(err))
+      ns.noteError(event, err)
     end
   end
 end
@@ -39,6 +40,18 @@ function ns.On(event, fn, first)
 end
 
 ns.Fire = dispatch
+
+-- Errors are kept (the last 20, in ZugzugLevelerDB.errors) so /zug errors can
+-- show a report to copy and paste where the project takes bug reports, and the
+-- companion page can say there were some. Nothing is sent anywhere.
+function ns.noteError(event, err)
+  if not ns.db then return end
+  local list = ns.db.errors or {}
+  ns.db.errors = list
+  local version = C_AddOns and C_AddOns.GetAddOnMetadata and C.try(C_AddOns.GetAddOnMetadata, ADDON, "Version") or "?"
+  list[#list + 1] = { at = C.epoch(), event = event, err = tostring(err), version = version }
+  while #list > 20 do table.remove(list, 1) end
+end
 
 frame:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then

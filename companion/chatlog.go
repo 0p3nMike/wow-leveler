@@ -3,7 +3,7 @@ package main
 // Live events from the game's chat log, between saves.
 //
 // The addon's data reaches the disk only on /reload or logout. With chat
-// logging on (/chatlog, or /lev live on: LoggingChat(true)), the client writes
+// logging on (/chatlog, or /zug live on: LoggingChat(true)), the client writes
 // chat to <client>/Logs/WoWChatLog.txt, its own system lines included. The
 // lines we read are the enUS GlobalStrings for the Forever client (Ketho's
 // BlizzardInterfaceResources, forever branch, Resources/GlobalStrings/enUS.lua):
@@ -21,7 +21,7 @@ package main
 //
 // The line format (a timestamp, then the text) has not been seen on this
 // client yet, so the timestamp is read loosely: "M/D HH:MM:SS.mmm  text".
-// "zugzugleveler live check <epoch>" is the addon's marker (/lev live check):
+// "zugzugleveler live check <epoch>" is the addon's marker (/zug live check):
 // seeing it, and how late, tells whether the client writes as you play.
 
 import (
@@ -54,6 +54,19 @@ type ChatLog struct {
 	evs   []LiveEvent
 	check map[int64]int64 // marker epoch -> when its line was read (unix)
 	now   func() time.Time
+	loc   *locRules // the client's language, when not English (chatlocale.go)
+}
+
+// SetStrings: the client's own format strings (Live.lua saves them), for a
+// client that is not in English. Read again by the server every minute.
+func (c *ChatLog) SetStrings(locale string, s map[string]any) {
+	lr := newLocRules(locale, s)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if (lr == nil) != (c.loc == nil) || (lr != nil && lr.locale != c.loc.locale) {
+		c.off, c.evs = 0, nil // read the log again with the new patterns
+	}
+	c.loc = lr
 }
 
 func NewChatLog(clientDir string) *ChatLog {
@@ -76,6 +89,11 @@ var (
 
 // parseLine reads one log line; ok is false for a line without a timestamp.
 func parseLine(line string, year int, loc *time.Location) (LiveEvent, bool) {
+	return parseLineIn(nil, line, year, loc)
+}
+
+// parseLineIn: the same, trying the client's own language first.
+func parseLineIn(lr *locRules, line string, year int, loc *time.Location) (LiveEvent, bool) {
 	m := reStamp.FindStringSubmatch(strings.TrimRight(line, "\r\n"))
 	if m == nil {
 		return LiveEvent{}, false
@@ -85,6 +103,13 @@ func parseLine(line string, year int, loc *time.Location) (LiveEvent, bool) {
 	text := strings.TrimSpace(reColor.ReplaceAllString(m[6], ""))
 	e := LiveEvent{T: t.Unix(), Kind: "other", Text: text}
 	num := func(s string) int { v, _ := strconv.Atoi(s); return v }
+	if reCheck.MatchString(text) {
+		e.Kind, e.Name = "check", reCheck.FindStringSubmatch(text)[1]
+		return e, true
+	}
+	if lr != nil && lr.classify(text, &e) {
+		return e, true
+	}
 	switch {
 	case reCheck.MatchString(text):
 		e.Kind = "check"
@@ -143,7 +168,7 @@ func (c *ChatLog) read() {
 			break
 		}
 		c.off += int64(len(line))
-		e, ok := parseLine(line, now.Year(), now.Location())
+		e, ok := parseLineIn(c.loc, line, now.Year(), now.Location())
 		if !ok {
 			continue
 		}

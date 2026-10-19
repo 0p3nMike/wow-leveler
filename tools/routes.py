@@ -6,7 +6,7 @@
 With no --run it lists the runs. With --run N it prints a markdown report:
 per-level time and XP/hour, time per zone, kill vs quest XP, deaths, flights,
 and the longest stretches with no XP (where a route loses time). --route also
-writes run N as a routes/*.lua file (same steps as /lev route fromrun in game).
+writes run N as a routes/*.lua file (same steps as /zug route fromrun in game).
 
 Python stdlib only. The SavedVariables file is plain Lua table syntax, parsed
 here by a small reader (strings, numbers, booleans, nil, nested tables).
@@ -268,7 +268,7 @@ def main(argv=None):
     runs = db.get("runs") or []
     if not a.run:
         if not runs:
-            print("no runs recorded yet (/lev rec start in game)")
+            print("no runs recorded yet (/zug rec start in game)")
         for i, r in enumerate(runs, 1):
             print(run_label(i, r))
         return

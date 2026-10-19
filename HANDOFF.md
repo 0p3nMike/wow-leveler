@@ -13,7 +13,7 @@
 ## Renamed to zugzugleveler (2026-10-18)
 
 Folder `ZugzugLeveler`, TOC `ZugzugLeveler.toc`, saves `ZugzugLeveler.lua` with
-`ZugzugLevelerDB` / `ZugzugLevelerCharDB`, slash `/lev` `/leveler` `/zug` `/zugzug`, companion
+`ZugzugLevelerDB` / `ZugzugLevelerCharDB`, slash `/zug` `/zugzug` (`/lev` and `/leveler` retired 2026-10-18), companion
 `zugzugleveler-companion.exe`, `%LOCALAPPDATA%\zugzugleveler`, write header `X-Zugzug`. Old saves
 (`SlopLeveler.lua`) are moved by the companion (migrate.go) only while the game is closed (a running
 game rewrites the old file on exit); until then it reads them as they are. deploy.ps1 drops the old
@@ -31,10 +31,99 @@ game rewrites the old file on exit); until then it reads them as they are. deplo
    "Regenerating routes"), and `luajit tools\att2quests.lua <ATT>\db\Camelot\Categories <commit>`.
    Then both test suites, and compare the step counts.
 4. **Release.** `.\tools\release.ps1` -> `dist\zugzugleveler-setup.exe` + the addon zip.
-5. **In game, once:** full restart; the coach offers your route; `/lev why`; `/lev model`;
-   `/lev sync`; `/lev live on` + `/lev live check` (does the chat log fill as you play?).
+5. **In game, once:** full restart; the coach offers your route; `/zug why`; `/zug model`;
+   `/zug sync`; `/zug live on` + `/zug live check` (does the chat log fill as you play?).
 6. **Wowhead pictures stay off by default** (settings.go): ZAM's terms forbid non-browser
    downloads. Never switch the default on for others.
+
+## Added 2026-10-18 (0.3.0-alpha)
+
+- **Goal** (Route.goal/GOAL_SKIP, prefs.go): fastest leveling or completion; the page's Planner and
+  the game (first-run question, `/zug goal`, options panel) both set it; the newer choice wins
+  (Prefs.lua `at` vs ZugzugLevelerDB.goalAt). Route kinds left out work the same way
+  (Prefs.lua skip vs ZugzugLevelerDB.skip/skipAt, Route.skips).
+- **Pause** (Pause.lua): window button left of Sync, `/zug pause|resume`, key, options. While paused
+  XP/hour, session, step times, splits, downtime, recorder crumbs, coach prompts and the optimizer
+  stop; the arrow idles (Arrow.lua idlePose: drift + breathe + a sweep every 7 s); the step's map pin
+  is cleared; a manual `/way` still works; the quest log is still followed. Per character, survives
+  /reload. On resume the XP session and step clock move on by the paused online time.
+- **Activity** (Coach.activity, Downtime afk): afk, vendor, talking, flying, hunting, fighting,
+  travelling, paused, dead; saved in cdb.coach for the page and the peon.
+- **The peon**. In game (Peon.lua): PlayerModel `SetCreature(10556)` (Lazy Peon; ATT quest 5441),
+  `SetPortraitZoom(1)`, TalkingHeads atlases (Horde portrait frame, PortraitBg), talk animations 60/64/65
+  and stand 0 (wowdev.wiki M2/AnimationList: the UI export does not define AnimationDataEnum). Falls
+  back to media/icon.tga if no model loads in 3 s. Says coach heads-ups/questions, pause/resume,
+  level-ups, turn-ins (one per 20 s), talent points; clicks: ready lines, then annoyed ones.
+  On the page (web/peon.js): three.js 0.170.0 (vendored; npm sha512 + jsDelivr byte match checked),
+  the Sketchfab model (web/peon/, textures shrunk), a WC3 portrait with jaw (Teeth_011 +x) moving as
+  text types; only Stand1 and StandLumber are used because every other clip leaves the head-and-
+  shoulders frame (checked by rendering all 16 clips). The page's AI helper (ask.go) answers through
+  him. `node tools/peon-icon.mjs` re-renders peon/icon.png, peon/logo.png; media/icon.tga is
+  icon.png at 64x64 (TOC IconTexture: Forever's AddonList.lua draws it at 20x20).
+- **First run** (Coach.lua): questions queue (one popup at a time, the next on OnHide); first login:
+  goal (4 s), route (5 s; Questing/AoE when "<route> AoE" exists), live updates (6 s); peon hello and
+  closing line (Coach.onIdle).
+- **Options panel** (Options.lua): sections (CreateSettingsListSectionHeaderInitializer, as Blizzard's
+  AdvancedOptions.lua): How you play (goal, optimizer, assist, pause, hardcore, self-found), On screen,
+  Help (coach, live, talents, party ...), What your route includes.
+- **Errors** (Events.lua ns.noteError): last 20 in ZugzugLevelerDB.errors; `/zug errors` report (no
+  character name); the page's Overview says when there are some.
+- **Auction house** (Auction.lua): ReplicateItems scan from a click, read in slices; prices per
+  realm-faction; /api/prices; Professions tab money card.
+- **Quest text before pickup** (Export.lua E.questText at QUEST_DETAIL): ZugzugLevelerDB.questText,
+  /api/questtext, under "Next stop".
+- **Loot you saw** (Loot.lua): per creature, each corpse GUID once; GetLootSourceInfo when the client
+  has it, else the dead target; /api/loot; the map's mob card shows your rates.
+- **Party** (Party.lua): addon messages "ZUGZUG" to PARTY/RAID: route, step, level, paused, quest
+  progress; rows in the window; names never saved.
+- **Objective areas** (MapPath.lua): ATT `obj` coordinates of unfinished log quests as diamonds on
+  the world map and dots on the minimap.
+- **Talents** (Talents.lua, data/Talents.lua from tools/rxptalents.py): RestedXP classic talent
+  guides (loaded on camelot by RXPGuides.toc); rank via C_SpecializationInfo.GetTalentInfo
+  { specializationIndex, tier, column }.
+- **Hardcore / self-found** (Engine.applies/modeOk): rxp2route now keeps RXP's #hardcore #softcore
+  #ssf #ah steps marked (`mode`), shown by C_GameRules.IsHardcoreActive /
+  C_PlayerInfo.IsSelfFoundActive or the options. Routes were regenerated (step counts up 0-32).
+  Engine remembers the current step (cdb.stepKey) and finds it again when a route file changes.
+  **Saves from before this have no key**: Michael's Undead Mage AoE place (step 315) is step 320 in
+  the new file: `/zug step 320` once.
+- **Data refresh** (tools/refresh.py, pins.json, routes.json): rebuilds all 53 routes, talents,
+  Quests.lua and npcloot.json from the pinned commits; `--check` compares. Verified 2026-10-18: at the
+  pins every file reproduces byte for byte (att2quests now sorts loot lists so it is repeatable).
+- **Languages** (Live.lua chatStrings, chatlocale.go): the client's own GlobalStrings for the chat
+  lines the page reads; a non-English client's lines become patterns (numbered %1$s handled).
+  The addon's own text is still English.
+- **Updates** (update.go): opt-in (Settings), GitHub releases/latest every 6 h; the Overview links a
+  newer release. Releases need `zugzugleveler-setup.exe` attached.
+- **Mac**: `tools\release.ps1` also builds `zugzugleveler-companion-mac-{arm64,amd64}`; default
+  game folder /Applications/World of Warcraft. Installer and watcher stay Windows-only.
+
+- **Page redesign** (web/app.js, style.css): 4 screens instead of 7 tabs. Character
+  (characterTab: notices, left tabbedPanel Now/Notes, centre gearScreen with the compact
+  sheet and the full name from snap.surname, right tabbedPanel Gear/Professions/Details),
+  Map & Quests (worldTab: mapTab + questLog; clicking a quest calls mapShow -> rings from
+  questPlaces), Plan & Runs (planTab: charAnalytics, runsTab, plannerTab), About (aboutTab:
+  help, commands, privacy, credits; the footer is one line). Old hashes map via OLD_TABS.
+  Display name **zugzug_leveler** (TOC Title, chat, options, page); internal names
+  (ZugzugLeveler folder, saves, exe names, %LOCALAPPDATA%\zugzugleveler) unchanged.
+  The in-game peon is **off by default** (`ns.db.peon == true`). The page peon breathes
+  (slow loop: body lift + jaw ease) and talks with one smooth jaw cycle about twice a second.
+
+- **The peon's voice and personality** (voice.go, web/peon.js, Peon.lua, data/Voice.lua,
+  tools/peon_voice.py, web/peon/lines.json). The voice is **`peon`**: a friend of the
+  project's impressions (Downloads\Peon Quotes.mp3, used with permission), 24 kHz mono 19.6 s,
+  in Chatterbox-TTS-Server\reference_audio and \voices (its UI dropdown), blendable.
+  `peondrac` (blendd: peon 70 + dracflow15 30) is Michael's own, local only: it is part
+  Dracula Flow, someone else's voice, so it is not shipped. Neither is on the homelab yet
+  (asleep): `stream\sync-voices.ps1 -Push` when it is awake.
+  Personality: caveman efficiency (few words, no filler, facts exact). lines.json holds every
+  fixed line; `tools\peon_voice.py --ship` (with Chatterbox's python_embedded) renders them and
+  packs .ogg into web/peon/voice/peon/ (page, 25 lines) and ZugzugLeveler/media/voice/ (addon,
+  18 lines) and writes data/Voice.lua. In game: PlaySoundFile(path, "Dialog"), a global in
+  Ketho's Forever GlobalAPI list (not in Blizzard's docs): **confirm in game**. The page turns
+  coach lines into peon speech (peonSpeak); ask.go's system prompt makes the helper model
+  answer as the peon (max_tokens 300). New lines on the page: Settings, "Chatterbox for new
+  lines". File name = sha1("<voice>\n<text>")[:20] in Go, Python and data/Voice.lua.
 
 ## Verified / not verified
 
@@ -50,6 +139,13 @@ game rewrites the old file on exit); until then it reads them as they are. deplo
 | auto accept under Forever's "secrets" | **verified by Michael** 2026-10-17: quest accepted on its own, step advanced, arrow moved to the next place |
 | auto turn-in (CompleteQuest / GetQuestReward) | **confirm in game** at the first turn-in |
 | optimizer auto mode, /swap, sub-objectives in game | Michael 2026-10-17: "looks like it runs great" (general report, not a per-feature check) |
+| 0.3.0 addon logic (pause, peon, talents, party, loot, options, wizard, errors, play styles, rebase) | **verified** in the harness: 357/357 (2026-10-18) |
+| companion (prices, questtext, loot, update, chat locale) | **verified**: `go test` + page probe |
+| peon in game: SetCreature(10556) shows the Lazy Peon, talk animations 60/64/65 | **confirm in game**: no model -> the icon shows instead |
+| TalkingHeads-Horde-PortraitFrame atlas | the kit name is in TalkingHeadUI.lua; the atlas itself **confirm in game** (falls back to Alliance, then a gold edge) |
+| GetLootSourceInfo | **not in the UI export**; confirm in game (falls back to the dead target) |
+| ReplicateItems index base, AuctionHouseFrame name | **confirm in game** (reads 0..n, skips empty) |
+| party messages between two clients | **confirm in game** with a friend |
 | hearth detection (spell 8690) | **unverified ID**; only affects the recorder's "hearth" event |
 | the arrow (Arrow.lua) pointing the right way in game | math checked against Blizzard's SuperTrackedFrame + HereBeDragons; **confirm in game**: run toward it, it should stay green and point up |
 
@@ -57,10 +153,10 @@ game rewrites the old file on exit); until then it reads them as they are. deplo
 
 1. Restart WoW (a new addon needs a restart). Check the AddOns list for "zugzugleveler" without "out of date".
 2. `/dump GetBuildInfo()`: the 4th value should be 16001.
-3. The window appears top right. `/lev route list` shows the RXP routes for your faction.
-4. `/lev route use RXP <Race> Warrior` on a fresh level 1 character. The arrow should point at the first quest giver.
+3. The window appears top right. `/zug route list` shows the RXP routes for your faction.
+4. `/zug route use RXP <Race> Warrior` on a fresh level 1 character. The arrow should point at the first quest giver.
 5. Accept the quest. The step should advance, and with assist on the quest accepts itself.
-6. `/lev rec start`, play 10 minutes, `/reload`, `/lev runs`. The run should still be there.
+6. `/zug rec start`, play 10 minutes, `/reload`, `/zug runs`. The run should still be there.
 7. `python -I tools\routes.py "...\WTF\Account\<ACCT>\SavedVariables\ZugzugLeveler.lua" --run 1`
 
 ## Regenerating routes
@@ -100,11 +196,11 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
   if in bags) and `/targetexact` the step's mobs/NPC. Bindings.xml puts both in Key Bindings >
   AddOns. Never touched in combat (queued to PLAYER_REGEN_ENABLED). Shift-drag to move.
 - **Splits.lua**: played time per step vs best (`ZugzugLevelerDB.best[route].seg`); only steps that
-  were on screen when finished are timed (no fake bests from fast-forwarding or /lev skip).
+  were on screen when finished are timed (no fake bests from fast-forwarding or /zug skip).
 - **Downtime.lua**: combat / drink / move / flight / idle / dead per zone (session + recorded run,
   `run.time`); aura names guarded with `issecretvalue`; in the run report.
 - **MapPath.lua**: world map data provider draws you -> next 12 steps (RXP's order) + the hunting
-  loop; minimap dots (rotation-aware). `/lev map off`.
+  loop; minimap dots (rotation-aware). `/zug map off`.
 - **Optimizer.lua**: shortest order for the next <=10 steps from where you stand (TSP with
   precedence, Held-Karp, exact; checked against brute force). Window stops at level gates,
   hearth/flight, steps without a position, set-aside steps. Rules: same quest keeps route order;
@@ -112,24 +208,24 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
   **Default `auto`** (Michael, 2026-10-17: "swap the arrow to keep me on the optimal route"):
   re-solves from your position every 2 s and on each step change; switches when the new order
   is >= 40 yd and >= 8% shorter than the one being followed (no flip-flopping); never while you
-  are in the area of the current "do" step. `suggest` = say it, `/lev optimize` applies;
+  are in the area of the current "do" step. `suggest` = say it, `/zug optimize` applies;
   `clear` reverts and drops to suggest; `off`. Ties keep the route's order.
-- **QuestLog.lua** (`/lev questlog`): a route built from the game itself: quests in the log
+- **QuestLog.lua** (`/zug questlog`): a route built from the game itself: quests in the log
   (`C_QuestLog.GetQuestsOnMap` on your map and the maps above it, `GetNextWaypoint`) as do /
   turn-in steps, quest givers (`C_QuestLine.GetAvailableQuestLines`, not `isHidden`) as accept
-  steps; rebuilt when the set changes; the optimizer orders the nearest 10. `/lev ql debug` shows
+  steps; rebuilt when the set changes; the optimizer orders the nearest 10. `/zug ql debug` shows
   how many quests got a position. **Unverified in game: whether Forever fills these in.**
 - **Flight.lua**: known flight points learned at a flight master (`GetTaxiMapID` +
   `C_TaxiMap.GetAllTaxiNodes`, state 0/1 = known); run and flight speeds MEASURED (flight speed
-  assumed 20 yd/s until your first flight); optimizer and arrow use walk-vs-fly. `/lev flight`.
+  assumed 20 yd/s until your first flight); optimizer and arrow use walk-vs-fly. `/zug flight`.
 - **Danger.lua** + `data/Danger.lua` (RestedXP dangerousMobs, CC BY-NC-SA, `tools/rxp_danger.py`):
   elites/rares/bosses and normal mobs not 2+ levels under you, within 70 yd of you (chat once,
-  window row, red minimap dots) or 60 yd of the next stop. `/lev danger on|off`.
+  window row, red minimap dots) or 60 yd of the next stop. `/zug danger on|off`.
 - **Options.lua**: Options > AddOns > zugzugleveler (Blizzard's vertical-layout settings, proxy
-  settings over our db): 2 dropdowns + 10 toggles. `/lev options`.
+  settings over our db): 2 dropdowns + 10 toggles. `/zug options`.
 - **Professions.lua** + `data/Professions.lua` (ProfessionLevelingGuide, MIT,
   `tools/plg_professions.lua`, run with luajit): step + materials vs bags, gathering zones per
-  faction, train reminder + `/lev prof way`; in the profession window, the game's own orange /
+  faction, train reminder + `/zug prof way`; in the profession window, the game's own orange /
   yellow recipes you can make now. Forever's new recipes are not in the 1-300 plan.
 - **Companion page** (`companion/`, Go, single .exe, `http://127.0.0.1:7830`): reads the
   SavedVariables (`lua.go`, a values-only Lua reader), serves `/api/*` + an embedded page
@@ -213,11 +309,11 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
   Shaman, Mage, Druid, the classes its RXP guide has steps for; confirm in game). Each route file
   starts with `if ns.Route.Skip(race, CLASS) then return end`, so only yours is built (unknown at
   load -> all). New characters without a route are offered theirs (Coach.routeFor).
-- **Fresher data** (Live.lua, companion chatlog.go): the Sync button / `/lev sync` / a key reloads
-  the UI to save now; `/lev live on` turns on the game's chat log (asked once) and the companion
+- **Fresher data** (Live.lua, companion chatlog.go): the Sync button / `/zug sync` / a key reloads
+  the UI to save now; `/zug live on` turns on the game's chat log (asked once) and the companion
   follows `Logs\WoWChatLog.txt` for quest/XP/level/loot lines (GlobalStrings enUS from Ketho's
   BlizzardInterfaceResources forever branch) -> the Overview's "Since the last save". NOT verified in
-  game: whether the client writes the log as you play or in bursts (`/lev live check` + the page
+  game: whether the client writes the log as you play or in bursts (`/zug live check` + the page
   measure it).
 - **Snapshot guard** (Export.lua): a closing game reports XP 0/0, no gear, no professions; the
   snapshot is skipped then, and an all-empty gear scan never replaces a real one (a real save got
@@ -258,14 +354,14 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
   wago.tools' Forever Creature table has only ~100 rows (names come from the server), so names
   cannot be mapped to ids offline.
 - **ROADMAP.md**: what is missing for other players, and the Wowhead decision.
-- **Coach.lua** (2026-10-18; a NEW file, so the game needs a full restart, not /reload): `/lev why`
+- **Coach.lua** (2026-10-18; a NEW file, so the game needs a full restart, not /reload): `/zug why`
   explains the step (what, who, the RestedXP guide it is in via the route's `sections`, why another
   zone, level pace, log quests the route skips); a chat heads-up once per zone change; yes/no
   StaticPopups (OnAccept/OnCancel, checked in Blizzard_StaticPopup) when stuck 12 min at a step,
   4 min in a zone the route has nothing in (-> quest log mode), or back in the parked guide's zone.
   Never in combat; each question snoozes 15 min. `E.park()` / `E.resume()` keep your place when
-  you go to quest log mode (`/lev route resume`). `cdb.coach` = {state, why, at} for the page's
-  "Why this step". `/lev coach off` silences it; `/lev why debug` is the old engine dump.
+  you go to quest log mode (`/zug route resume`). `cdb.coach` = {state, why, at} for the page's
+  "Why this step". `/zug coach off` silences it; `/zug why debug` is the old engine dump.
   rxp2route writes `sections = {{from, name}}` per route (all 12 routes regenerated, counts unchanged).
 - Hearth / fly steps are done once you are on the map of the next positioned step. Steps before a done hearth /
   flight, on a map you are not on, are "left behind": `deferred[i] = "left"`, one chat line naming them. Level-ups

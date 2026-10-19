@@ -7,6 +7,7 @@
 --   drink    a helpful aura named Drink / Food / Refreshment (enUS client names)
 --   flight   UnitOnTaxi
 --   move     position changed since the last tick
+--   afk      UnitIsAFK, or standing still for 3 minutes (kept out of "idle")
 --   idle     none of the above (vendors, quest text, standing)
 -- Aura names can be SECRET on Forever (C_UnitAuras.GetAuraDataByIndex is
 -- SecretWhenUnitAuraRestricted in the 1.60.1 export). Each one is checked with
@@ -22,7 +23,10 @@ local C, XP = ns.C, ns.XP
 local D = {}
 ns.Downtime = D
 
-D.STATES = { "combat", "drink", "move", "flight", "idle", "dead" }
+D.STATES = { "combat", "drink", "move", "flight", "idle", "afk", "dead" }
+-- afk: the game's own AFK flag (UnitIsAFK), or standing still this long
+local AFK_AFTER = 180
+local stillSince
 local DRINK = { Drink = true, Food = true, Refreshment = true, ["Food & Drink"] = true }
 
 local last, lastPos
@@ -48,7 +52,10 @@ function D.state()
   local m, x, y = C.mapPos()
   local moved = x and lastPos and (m ~= lastPos[1] or math.abs(x - lastPos[2]) + math.abs(y - lastPos[3]) > 0.0002)
   lastPos = x and { m, x, y } or lastPos
-  return moved and "move" or "idle"
+  if moved then stillSince = nil; return "move" end
+  stillSince = stillSince or C.now()
+  if C.try(UnitIsAFK, "player") or C.now() - stillSince >= AFK_AFTER then return "afk" end
+  return "idle"
 end
 
 local function add(tbl, zone, state, dt)
@@ -61,6 +68,7 @@ ns.On("SL_TICK", function()
   local dt = last and math.min(now - last, 2) or 0
   last = now
   if dt <= 0 then return end
+  if ns.Pause.on() then D.now = "paused"; return end
   local st = D.state()
   local zone = C.mapName((C.mapPos())) or "?"
   ns.cdb.downtime = ns.cdb.downtime or {}
@@ -84,7 +92,7 @@ function D.shares(zone)
   return t, total
 end
 
-local COLOR = { combat = "ffff6060", drink = "ff4fa3ff", move = "ffffffff", flight = "ffc080ff", idle = "ff999999", dead = "ff808080" }
+local COLOR = { combat = "ffff6060", drink = "ff4fa3ff", move = "ffffffff", flight = "ffc080ff", idle = "ff999999", afk = "ff666666", dead = "ff808080" }
 
 -- One line for the window: this zone's split, biggest first.
 function D.line()
@@ -107,7 +115,7 @@ end
 
 function D.reset() ns.cdb.downtime = {} end
 
--- full table for /lev downtime
+-- full table for /zug downtime
 function D.report()
   local lines = {}
   for zone, states in pairs(ns.cdb.downtime or {}) do
