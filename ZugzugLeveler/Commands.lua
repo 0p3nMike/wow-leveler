@@ -20,11 +20,13 @@ local HELP = {
   "/zug live on|off|check     XP, level and quests on the companion page as you play (the game's chat log)",
   "/zug pause · /zug resume   a detour of your own: nothing timed, coach quiet, arrow rests (also the window's button and a key)",
   "/zug errors [clear]        a report of the addon's errors to copy (no character name in it; nothing is sent)",
+  "/zug tmog                  what the game says about your transmog, slot by slot (it is saved at the transmogrifier)",
   "/zug talents [list|<name>|auto|off]  the talent to take next (RestedXP's talent guides)",
   "/zug party on|off         share your step and quest progress with party members who use the addon",
   "/zug peon on|off          the talking peon beside the window, off by default (says what the coach says; click him)",
   "/zug skip · /zug back · /zug step <n>",
   "/zug questlog (/zug ql)    no guide: your quest log + nearby quest givers, shortest order · ql debug · ql accept on|off",
+  "/zug farm <herb or ore>     walk the gathering nodes you have looted on this map, round and round · farm list · farm off",
   "/zug optimize              do the next steps in the shortest order (from where you stand) · optimize auto|suggest|off|clear",
   "/swap                      set this step (and its quest) aside for now; back on level-up · /swap back · /swap list",
   "/zug export [route]        the route as Lua, for a routes/*.lua file",
@@ -155,6 +157,7 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
     for _, l in ipairs(ns.Coach.why()) do C.print(l) end
   elseif cmd == "sync" then ns.Live.sync()
   elseif cmd == "model" then ns.Model.toggle()
+  elseif cmd == "tmog" then ns.Export.tmogDebug()
   elseif cmd == "prices" then ns.Auction.scan()
   elseif cmd == "pause" then if args == "" then ns.Pause.toggle() else ns.Pause.set(onoff(args)) end
   elseif cmd == "resume" then ns.Pause.set(false)
@@ -211,6 +214,8 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
     end
   elseif cmd == "options" or cmd == "config" or cmd == "settings" then ns.Options.open()
   elseif cmd == "danger" then ns.Danger.toggle(onoff(args)); C.print("danger warnings: %s", args)
+  elseif cmd == "farm" then
+    ns.Farm.command(args)
   elseif cmd == "questlog" or cmd == "ql" then
     if args == "debug" then ns.QuestLog.debug()
     elseif args == "accept off" or args == "accept on" then

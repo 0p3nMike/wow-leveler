@@ -35,8 +35,8 @@ local CREATURE = 10556 -- Lazy Peon
 local ANIM = { talk = 60, yell = 64, ask = 65, stand = 0 }
 local ICON = "Interface\\AddOns\\ZugzugLeveler\\media\\icon"
 local VOICE = "Interface\\AddOns\\ZugzugLeveler\\media\\voice\\"
-local L = ns.PeonLines or { ready = { "Zug zug." }, annoyed = { "Me not that kind of orc!" }, game = {} }
-P.READY, P.ANNOYED, P.LINES = L.ready, L.annoyed, L.game
+local L = ns.PeonLines or { ready = { "Zug zug." }, annoyed = { "Me not that kind of orc!" }, easter = {}, game = {} }
+P.READY, P.ANNOYED, P.EASTER, P.LINES = L.ready, L.annoyed, L.easter or {}, L.game
 local playing -- the sound handle of the line he is saying
 
 local f, model, icon, bubble, text
@@ -168,12 +168,19 @@ function P.say(msg, kind, line)
   P.last = msg
 end
 
--- clicked: a ready line, then, clicked too often, the annoyed ones
+-- clicked: a ready line, then, clicked too often, the annoyed ones, and past
+-- those an easter egg (never the same one twice running)
+local lastEgg = 0
 function P.poke()
   local now = C.now()
   pokes = (now - lastPoke < 2.5) and pokes + 1 or 1
   lastPoke = now
-  if pokes >= 4 then
+  if pokes >= 4 + #P.ANNOYED and #P.EASTER > 0 then
+    local k = math.random(#P.EASTER)
+    if #P.EASTER > 1 and k == lastEgg then k = k % #P.EASTER + 1 end
+    lastEgg = k
+    P.say(P.EASTER[k], "yell")
+  elseif pokes >= 4 then
     P.say(P.ANNOYED[math.min(pokes - 3, #P.ANNOYED)], "yell")
   else
     P.say(P.READY[math.random(#P.READY)])

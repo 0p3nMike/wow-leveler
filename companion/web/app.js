@@ -9,8 +9,43 @@ import { h, svg, fmtTime, fmtNum, lineChart, multiLine, columnChart, stackedBars
 import * as G from "./gear.js";
 import * as M from "./model.js";
 import * as I from "./items.js";
+import { backdrop } from "./backdrop.js";
 
-const WOWHEAD = "https://www.wowhead.com/forever";
+// panefx's ASCII backdrops behind the page (backdrop.js), coloured by the theme
+const bd = backdrop();
+
+let WOWHEAD = "https://www.wowhead.com/forever"; // the game's Wowhead (gear.js setGame, from /api/state)
+// The game the page shows: Mists of Pandaria Classic is expansion 5 (games.go).
+const isMists = () => !!(S.state && S.state.expansion === 5);
+const levelCap = () => isMists() ? 90 : 60;
+const weightsPath = () => isMists() ? "data/mists/weights.json" : "data/weights.json";
+
+// Mists: the reward items of the quests this character can take now (the
+// addon's avail) or has (its quest log), from the quest data's rw lists
+// (AllTheThings), as if the game had shown them. Item stats: the game's own
+// first (the addon looks these up, Export.lua E.lookupRewards), else wowsims'
+// MoP item database (data/mists/items.json, MIT). A quest the game has shown
+// keeps what the game said.
+async function withQuestRewards(c, known) {
+  if (!isMists()) return known;
+  let qdb = {}, mitems = {};
+  try { [qdb, mitems] = await Promise.all([cached("questdb", "/api/questdb"), cached("mistsItems", "data/mists/items.json").then(d => d.items || {})]); } catch { return known; }
+  const items = { ...mitems, ...(known.items || {}) };
+  const quests = { ...(known.quests || {}) };
+  const log = G.arr(c.db.questLog);
+  const logName = Object.fromEntries(log.map(e => [e.q, e.title]));
+  const names = c.db.availNames || {};
+  for (const q of new Set([...G.arr(c.db.avail), ...log.map(e => e.q)])) {
+    if (!q || quests[q]) continue;
+    const e = qdb[q];
+    const rw = G.arr(e && e.rw).filter(id => items[id]);
+    if (!rw.length) continue;
+    const at = G.arr(e.at);
+    quests[q] = { title: names[q] || logName[q], choice: rw.length > 1 ? rw : [], reward: rw.length === 1 ? rw : [], map: at[0],
+      giver: at.length >= 3 ? { map: at[0], x: at[1], y: at[2] } : null, inLog: logName[q] != null, fromData: true };
+  }
+  return { ...known, items, quests };
+}
 const ACTS = {
   accept: { label: "Accept", color: "var(--s1)" },
   complete: { label: "Do", color: "var(--s2)" },
@@ -484,8 +519,12 @@ function toMap(p, mapID, maps) {
 async function upcoming(db, n) {
   if (!db.route) return { route: null, list: [] };
   let route;
-  try { route = await cached("route:" + db.route, `/api/route?name=${encodeURIComponent(db.route)}`); }
-  catch { return { route: null, list: [], missing: db.route }; }
+  // quest log mode and farming build their steps in game (Route.saveLive)
+  if (db.liveSteps && db.liveSteps.route === db.route) route = { name: db.route, steps: G.arr(db.liveSteps.steps) };
+  else {
+    try { route = await cached("route:" + db.route, `/api/route?name=${encodeURIComponent(db.route)}`); }
+    catch { return { route: null, list: [], missing: db.route }; }
+  }
   const idx = [];
   const plan = G.arr(db.plan && db.plan.list);
   for (const j of plan) idx.push(j);
@@ -519,12 +558,14 @@ async function mapTab(view) {
   gearBox.checked = S.mapGear !== false;
   const questBox = h("input", { type: "checkbox" });
   questBox.checked = S.mapQuests !== false;
+  const nodeBox = h("input", { type: "checkbox" });
+  nodeBox.checked = S.mapNodes !== false;
   const stops = await gearStops(c);
-  view.append(h("div", { class: "row" }, h("label", {}, "Zone ", pick), h("label", {}, "Your path from run ", runPick), h("label", {}, danger, " danger"), h("label", {}, gearBox, " gear upgrades"), h("label", {}, questBox, " quests to pick up")));
+  view.append(h("div", { class: "row" }, h("label", {}, "Zone ", pick), h("label", {}, "Your path from run ", runPick), h("label", {}, danger, " danger"), h("label", {}, gearBox, " gear upgrades"), h("label", {}, questBox, " quests to pick up"), h("label", {}, nodeBox, " gathering")));
   const box = h("div", { class: "card map" });
   view.append(box);
   const draw = async () => {
-    S.mapPick = pick.value; S.mapRun = runPick.value; S.mapDanger = danger.checked; S.mapGear = gearBox.checked; S.mapQuests = questBox.checked;
+    S.mapPick = pick.value; S.mapRun = runPick.value; S.mapDanger = danger.checked; S.mapGear = gearBox.checked; S.mapQuests = questBox.checked; S.mapNodes = nodeBox.checked;
     box.replaceChildren();
     const mapID = +pick.value, Wm = 1000, Hm = 667;
     box.append(h("div", { class: "legend" },
@@ -534,6 +575,7 @@ async function mapTab(view) {
       h("span", {}, h("i", { class: "line", style: "background:var(--graphite)" }), "Your path"),
       gearBox.checked ? h("span", {}, h("i", { class: "diamond" }), "Gear upgrade") : null,
       questBox.checked ? h("span", {}, h("b", { class: "bang" }, "!"), "Quest to pick up") : null,
+      nodeBox.checked ? h("span", {}, h("i", { class: "node" }), "Gathered here") : null,
       danger.checked ? h("span", { class: "status-critical" }, "! danger and patrols") : null));
     const host = h("div", { class: "chart" });
     box.append(host);
@@ -543,7 +585,7 @@ async function mapTab(view) {
     // the game's map art for this zone (Wowhead's Forever map, cached by the
     // companion): the same 0-1 frame as the addon's map coordinates
     let art = null;
-    if (I.picturesOn()) { try { art = await cached("mapart:" + maps[mapID].name, `/api/mapart?name=${encodeURIComponent(maps[mapID].name)}`); } catch { } }
+    if (I.picturesOn()) { try { art = await cached("mapart:" + maps[mapID].name, `/api/mapart?name=${encodeURIComponent(maps[mapID].name)}${isMists() ? "&game=mists" : ""}`); } catch { } }
     if (art && art.url) {
       s.classList.add("onart");
       svg("image", { class: "mapart", href: art.url, x: 0, y: 0, width: Wm, height: Hm, preserveAspectRatio: "none" }, s);
@@ -647,6 +689,21 @@ async function mapTab(view) {
       g.addEventListener("mousemove", () => tip(cx, cy, `<b>${esc(g0.it.name || "item " + g0.it.id)}</b> +${fmtScore(g0.gain)} for your ${label(g0.slot).toLowerCase()}<br>${esc(g0.how)}`));
       g.addEventListener("mouseleave", hide);
     }
+    // the gathering nodes you looted on this map (Loot.lua L.node): small squares,
+    // the items and how often in the tooltip
+    if (nodeBox.checked) {
+      let known = {};
+      try { known = await cached("items", "/api/items"); } catch { }
+      for (const p0 of G.arr((known.nodes || {})[mapID])) {
+        const cx = p0.x * Wm, cy = p0.y * Hm;
+        const g = svg("g", {}, s);
+        svg("rect", { x: cx - 4, y: cy - 4, width: 8, height: 8, fill: "var(--sage)", stroke: "var(--raised)", "stroke-width": 1.5, opacity: 0.9 }, g);
+        svg("circle", { cx, cy, r: 10, fill: "transparent" }, g);
+        const what = Object.values(p0.items || {}).map(e => `${esc(e.name || "?")} ×${e.q}`).join(", ");
+        g.addEventListener("mousemove", () => tip(cx, cy, `<b>Gathered here ${p0.n}×</b><br>${what}`));
+        g.addEventListener("mouseleave", hide);
+      }
+    }
     // quests you could pick up when the game last saved (the addon works that
     // out in game from AllTheThings' quest data: QuestInfo.lua), at their givers
     let pickups = 0;
@@ -693,9 +750,9 @@ async function mapTab(view) {
     box.append(mobBox);
     const off = list.length - pts.length;
     const nextZone = cur && maps[cur.map] && String(cur.map) !== pick.value ? ` The next stop is in ${maps[cur.map].name}.` : "";
-    box.append(h("p", { class: "sub" }, `${pts.length} of the next ${list.length} steps are on this map${off ? ` (${off} elsewhere or without a recorded zone)` : ""}${gearBox.checked ? `, and ${shown} of ${stops.length} known gear upgrades` : ""}${questBox.checked ? (G.arr(c.db.avail).length ? `; ${pickups} quests you could pick up here` : "; quests to pick up appear after a /reload with the updated addon") : ""}.${nextZone} ${art && art.url ? "The map is the game's own art, as Wowhead's Forever pages show it." : (I.picturesOn() ? "No map art for this zone on Wowhead yet, so it is drawn on a plain grid." : "A plain grid in the game's own coordinates (map pictures are off: Settings).")}`));
+    box.append(h("p", { class: "sub" }, `${pts.length} of the next ${list.length} steps are on this map${off ? ` (${off} elsewhere or without a recorded zone)` : ""}${gearBox.checked ? `, and ${shown} of ${stops.length} known gear upgrades` : ""}${questBox.checked ? (G.arr(c.db.avail).length ? `; ${pickups} quests you could pick up here` : "; quests to pick up appear after a /reload with the updated addon") : ""}.${nextZone} ${art && art.url ? "The map is the game's own art, as Wowhead shows it." : (I.picturesOn() ? "No map art for this zone on Wowhead yet, so it is drawn on a plain grid." : "A plain grid in the game's own coordinates (map pictures are off: Settings).")}`));
   };
-  for (const e of [pick, runPick, danger, gearBox, questBox]) e.addEventListener("change", () => { S.mapFocus = null; draw(); });
+  for (const e of [pick, runPick, danger, gearBox, questBox, nodeBox]) e.addEventListener("change", () => { S.mapFocus = null; draw(); });
   mapShow = async (mapID, q) => { if (maps[mapID]) pick.value = String(mapID); S.mapFocus = q; await draw(); box.scrollIntoView({ block: "nearest", behavior: "smooth" }); };
   await draw();
 }
@@ -1007,8 +1064,89 @@ async function moneyCard(c, prof, idOf, snap) {
   return box;
 }
 
+// Mists: no open 1-600 leveling plan exists (every MoP profession guide is All
+// Rights Reserved), so the plan comes from your own profession window: the
+// recipes that still give skill (Professions.lua P.recipe: orange, yellow,
+// green, with materials and what you carry), cheapest first at this realm's
+// auction prices (Auction.lua). Orange always gives a point; yellow and green
+// only sometimes, so they rank after it.
+const KIND = { optimal: ["orange", 0, "qd-orange"], medium: ["yellow", 1, "qd-yellow"], easy: ["green", 2, "qd-green"] };
+async function mistsProfTab(view, c) {
+  const recs = (c && c.db.profRecipes) || {};
+  let all = {}, known = {};
+  try { [all, known] = await Promise.all([api("/api/prices"), cached("items", "/api/items")]); } catch { }
+  const ch = (c && c.db.char) || {};
+  const pr = all[`${ch.realm}-${ch.faction}`];
+  const priceOf = id => { const e = pr && pr.items && pr.items[id]; return e && e.p > 0 ? e.p : null; };
+  const g = h("div", { class: "grid prof" });
+  view.append(g);
+  // every profession you have (Professions.lua P.mine: GetProfessions /
+  // GetProfessionInfo), with what to do next for each
+  const snap = c && Array.isArray(c.db.profSnap) ? c.db.profSnap : G.arr(c && c.db.profSnap);
+  const GATHER = new Set(["Mining", "Herbalism", "Skinning"]);
+  const SECONDARY = new Set(["Fishing", "Cooking", "First Aid", "Archaeology"]);
+  if (snap.length) {
+    const yc = h("section", { class: "card wide" }, h("h2", {}, "Your professions"));
+    yc.append(h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Profession"), h("th", { class: "num" }, "Skill"), h("th", {}, "Next"))),
+      h("tbody", {}, snap.map(p => {
+        const capped = p.max && p.rank >= p.max;
+        const next = capped ? "at this rank's cap: train the next rank at a trainer"
+          : recs[p.name] ? "the cheapest skill-ups are below"
+          : GATHER.has(p.name) ? `gather: every node you loot is recorded; /zug farm walks them${p.name === "Mining" ? " (open the smelting window once for its recipes)" : ""}`
+          : SECONDARY.has(p.name) ? "no plan for this one yet"
+          : "open its window in game once (then /reload) for a plan";
+        return h("tr", {}, h("td", {}, p.name), h("td", { class: "num" }, `${p.rank ?? "?"} / ${p.max ?? "?"}`), h("td", { class: "muted" }, next));
+      }))));
+    g.append(yc);
+  }
+  const names = Object.keys(recs).sort();
+  if (!names.length && !snap.length) g.append(h("div", { class: "empty" }, "No professions saved yet: log in with the addon, then /reload."));
+  for (const name of names) {
+    const r = recs[name];
+    const crafted = new Set(G.arr(r.recipes).map(x => x.id).filter(Boolean)); // a missing material another recipe here makes
+    const rows = G.arr(r.recipes).map(x => {
+      let cost = 0, unknown = 0;
+      const missing = G.arr(x.mats).map(m => {
+        const short = Math.max(0, (m.need || 0) - (m.have || 0));
+        if (short) { const p = priceOf(m.id); if (p) cost += p * short; else unknown++; }
+        return { ...m, short };
+      }).filter(m => m.short > 0);
+      return { ...x, cost, unknown, missing, rank: (KIND[x.kind] || ["", 9])[1] };
+    }).sort((a, b) => (a.rank - b.rank) || ((a.unknown > 0) - (b.unknown > 0)) || (a.cost - b.cost));
+    const card = h("section", { class: "card" }, h("h2", {}, name),
+      h("p", { class: "sub" }, `Skill ${r.rank ?? "?"} of ${r.max ?? "?"}, read ${ago(r.at)}. ${pr ? `Prices from the ${ch.realm} auction house, ${ago(pr.at)}.` : "No auction prices yet: press Read prices at the auction house (or /zug prices), then Sync."}`));
+    if (!rows.length) card.append(h("p", { class: "sub" }, "Nothing left that gives skill at this rank: train the next rank."));
+    else card.append(h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Recipe"), h("th", {}, "You can make"), h("th", {}, "Missing"), h("th", { class: "num" }, "Missing costs"))),
+      h("tbody", {}, rows.slice(0, 10).map(x => h("tr", {},
+        h("td", {}, h("span", { class: (KIND[x.kind] || [])[2] || "" }, x.id ? ilink(x.id, x.name) : x.name), h("div", { class: "muted" }, (KIND[x.kind] || [x.kind])[0])),
+        h("td", {}, String(x.n || 0)),
+        h("td", {}, x.missing.length ? x.missing.map((m, i) => h("span", {}, i ? ", " : "", `${m.short}× `, m.id ? ilink(m.id, m.name) : m.name || "?",
+          crafted.has(m.id) ? h("span", { class: "muted" }, " (you make it)") : null)) : h("span", { class: "muted" }, "nothing")),
+        h("td", { class: "num" }, !x.missing.length ? "--" : !pr ? "no prices yet" : x.unknown ? (x.cost ? `${G.money(x.cost)} + ?` : "not on sale") : G.money(x.cost)))))));
+    g.append(card);
+  }
+  // your gathering map (Loot.lua L.node), all maps
+  const nodes = known.nodes || {};
+  const maps = await cached("maps", "/api/maps").catch(() => ({}));
+  const by = new Map();
+  for (const [map, list] of Object.entries(nodes)) for (const p of G.arr(list)) for (const [id, e] of Object.entries(p.items || {})) {
+    const k = e.name || `item ${id}`;
+    const v = by.get(k) || { id, n: 0, maps: new Map() };
+    v.n++; v.maps.set(map, (v.maps.get(map) || 0) + 1);
+    by.set(k, v);
+  }
+  const gc = h("section", { class: "card" }, h("h2", {}, "Your gathering map"),
+    h("p", { class: "sub" }, "Every herb, ore vein and chest you loot is remembered where you stood. Nobody publishes where nodes spawn, so this map is your own and grows as you gather. In game, /zug farm <name> walks them on your map, round and round; Map & Quests shows them."));
+  if (!by.size) gc.append(h("p", { class: "sub" }, "Nothing gathered with the updated addon yet."));
+  else gc.append(h("ul", { class: "notes" }, [...by.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 12).map(([name, v]) => h("li", {},
+    h("span", { class: "fig" }, String(v.n)), " ", ilink(+v.id, name), h("span", { class: "muted" },
+      `  ${[...v.maps.entries()].sort((a, b) => b[1] - a[1]).map(([m, n]) => `${(maps[m] && maps[m].name) || "map " + m} ${n}`).join(", ")}; /zug farm ${name.split(" ").slice(-1)[0].toLowerCase()}`)))));
+  g.append(gc);
+}
+
 async function profTab(view) {
   const c = S.char;
+  if (isMists()) return mistsProfTab(view, c);
   const prof = await cached("prof", "/api/prof");
   const snap = c && Array.isArray(c.db.profSnap) ? c.db.profSnap : [];
   const faction = c && c.db.char && c.db.char.faction;
@@ -1084,7 +1222,10 @@ async function gearScreen(center, side, details) {
     side.append(h("div", { class: "empty" }, "Gear appears once the game has saved it."));
     return;
   }
-  const [known, weights, maps] = await Promise.all([cached("items", "/api/items"), cached("weights", "data/weights.json"), cached("maps", "/api/maps")]);
+  const [seen, weights, maps] = await Promise.all([cached("items", "/api/items"), cached("weights", weightsPath()), cached("maps", "/api/maps")]);
+  const known = await withQuestRewards(c, seen);
+  const talentData = isMists() ? await cached("mistsTalents", "data/mists/talents.json").catch(() => null) : null;
+  const ratingData = isMists() ? await cached("mistsRatings", "data/mists/ratings.json").catch(() => null) : null;
   let routeSteps = [];
   if (c.db.route) { try { routeSteps = (await cached("route:" + c.db.route, `/api/route?name=${encodeURIComponent(c.db.route)}`)).steps; } catch { } }
   const skills = G.arr(gear.skills);
@@ -1095,7 +1236,7 @@ async function gearScreen(center, side, details) {
   const pref = JSON.parse(store.get("gear:" + S.charKey) || "{}");
   const st = { cls: pref.cls || own || "MAGE", level: snap.level || 1, spec: pref.spec, kind: pref.kind || "Speedrun" };
   const clsPick = h("select", {}, G.CLASS_NAMES.map(k => h("option", { value: k }, k[0] + k.slice(1).toLowerCase())));
-  const lvlIn = h("input", { type: "number", min: 1, max: 60, style: "width:64px" });
+  const lvlIn = h("input", { type: "number", min: 1, max: levelCap(), style: "width:64px" });
   const specPick = h("select", {});
   const kindPick = h("select", {});
   // the hero: the character sheet, your character in 3D in the middle
@@ -1110,8 +1251,8 @@ async function gearScreen(center, side, details) {
 
   const draw = () => {
     box.replaceChildren();
-    const lvl = Math.max(1, Math.min(60, +st.level || 1));
-    const { set, specs, kinds, kind, spec } = G.weightsForChar(weights.sets, st.cls, lvl, st.cls === own ? trees : [], c.db.route, { spec: st.spec, kind: st.kind });
+    const lvl = Math.max(1, Math.min(levelCap(), +st.level || 1));
+    const { set, specs, kinds, kind, spec } = G.weightsForChar(weights.sets, st.cls, lvl, st.cls === own ? trees : [], c.db.route, { spec: st.spec, kind: st.kind }, st.cls === own && gear.spec && gear.spec.cur);
     st.spec = spec;
     clsPick.value = st.cls; lvlIn.value = lvl;
     specPick.replaceChildren(...specs.map(s => h("option", { value: s }, s)));
@@ -1170,13 +1311,19 @@ async function gearScreen(center, side, details) {
       ["Character", `level ${snap.level ?? "?"} ${raceName(snap.race)} ${(snap.class || "").toLowerCase()}${snap.faction ? `, ${snap.faction}` : ""}`],
       ["Talents", !trees.length ? "not saved"
         : !trees.some(t => t.name) ? "no spec chosen yet"
+        : isMists() ? (gear.spec.cur && trees[gear.spec.cur - 1] && trees[gear.spec.cur - 1].name ? `${trees[gear.spec.cur - 1].name} specialization` : "no spec chosen yet")
         : trees.filter(t => t.name).map(t => `${t.name} ${t.points || 0}`).join(", ") + (top && top.points ? "" : " (no points yet)")],
       ["Item level", gear.ilvl ? gear.ilvl.toFixed(1) : "--"],
       ["Stats", ["str", "agi", "sta", "int", "spi"].map(k => `${s[k] ?? "--"} ${k}`).join(", ")],
-      ["Spell damage", s.spell ? `+${s.spell}` : "none"],
+      isMists() ? null : ["Spell damage", s.spell ? `+${s.spell}` : "none"],
+      isMists() ? ["Spell power", s.spell ? String(s.spell) : "none"] : null,
+      isMists() && s.r ? ["Ratings", ratingText(s.r, casterSpec(own, gear.spec))] : null,
+      isMists() && ratingData ? ["1% costs", costText(ratingData, snap.level || 1, casterSpec(own, gear.spec))] : null,
       ["Gold", G.money(gear.money)],
       worst ? ["Durability", h("span", { class: worst.f < 0.25 ? "status-critical" : "" }, `lowest ${Math.round(worst.f * 100)}% (${worst.it.name || "item " + worst.it.id})${worst.f < 0.25 ? ", repair soon" : ""}`)] : null,
     ]));
+
+    if (talentData) dg.append(talentsCard(talentData, own, gear.spec || {}, snap.level || 1));
 
     // what to do about it
     const todo = h("section", { class: "card" }, h("h2", {}, "Do next"));
@@ -1197,7 +1344,7 @@ async function gearScreen(center, side, details) {
       h("p", { class: "sub" }, `For a ${st.cls.toLowerCase()} at level ${lvl}, from the ${cat.length} items the game has shown you. "Next" is the best one that needs up to 5 more levels.`),
       h("div", { class: "row" }, h("label", {}, "Class ", clsPick), h("label", {}, "Level ", lvlIn), h("label", {}, "Spec ", specPick), h("label", {}, "Weights ", kindPick)));
     g.append(bis);
-    if (!w) bis.append(h("div", { class: "note bad" }, `RestedXP has no stat weights for this class at level ${lvl}.`));
+    if (!w) bis.append(h("div", { class: "note bad" }, `No stat weights for this class at level ${lvl}.`));
     // an item, its score, and (second line) where it comes from
     const cell = (e, sl, extra) => e ? h("div", { class: "bis" },
       h("div", {}, G.ilink(e.it), h("span", { class: "score" }, fmtScore(slotScore(e.it, sl)))),
@@ -1214,13 +1361,15 @@ async function gearScreen(center, side, details) {
     const qs = Object.entries(known.quests || {}).filter(([q, r]) => G.arr(r.choice).length > 1 && !done.has(+q));
     const stepOf = G.turninSteps(routeSteps);
     const rq = h("section", { class: "card wide" }, h("h2", {}, "Quest rewards to pick"),
-      h("p", { class: "sub" }, "Quests whose reward you choose, as the quest giver showed them. The addon never picks a reward for you; this is what to click."));
+      h("p", { class: "sub" }, isMists()
+        ? "Quests whose reward you choose: the ones you can take now or have (the quest data), and any a quest giver showed you. Upgrades first. The addon never picks a reward for you; this is what to click."
+        : "Quests whose reward you choose, as the quest giver showed them. The addon never picks a reward for you; this is what to click."));
     g.append(rq);
     const rows = qs.map(([q, r]) => {
       const opts = G.arr(r.choice).map(id => known.items[id]).filter(Boolean);
       const at = stepOf.get(+q);
       return { q: +q, r, pick: G.bestChoice(opts, worn, w, st.cls, lvl), at, ahead: at && at >= step };
-    }).sort((a, b) => (b.ahead - a.ahead) || ((a.at || 1e9) - (b.at || 1e9)));
+    }).sort((a, b) => (b.ahead - a.ahead) || ((b.pick && b.pick.gain || 0) - (a.pick && a.pick.gain || 0)) || ((a.at || 1e9) - (b.at || 1e9)));
     if (!rows.length) rq.append(h("p", { class: "sub" }, "None seen yet. Rewards are read when a quest giver shows a quest (accepting or turning in) with the updated addon."));
     else rq.append(h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Quest"), h("th", {}, "Pick"), h("th", {}, "Why"))),
       h("tbody", {}, rows.slice(0, 25).map(x => h("tr", {},
@@ -1234,7 +1383,9 @@ async function gearScreen(center, side, details) {
     dg.append(wc);
     if (w) wc.append(h("table", {}, h("tbody", {}, Object.entries(w).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
       h("tr", {}, h("td", {}, G.statLabel(k)), h("td", { class: "num" }, String(v)))))));
-    wc.append(h("p", { class: "sub" }, "From RestedXP Guides (CC BY-NC-SA 4.0), scored the way its ItemUpgrades does."));
+    wc.append(set && set.src === "wowsims"
+      ? h("p", { class: "sub" }, "From ", h("a", { href: "https://github.com/wowsims/mop", target: "_blank", rel: "noopener" }, "wowsims/mop"), " (MIT), its level-90 weights for this spec: nobody publishes MoP leveling weights for it. Ratings matter less at your level than at 90.")
+      : h("p", { class: "sub" }, "From RestedXP Guides (CC BY-NC-SA 4.0), scored the way its ItemUpgrades does."));
 
     const cnt = (o) => Object.keys(o || {}).length;
     const kc = h("section", { class: "card" }, h("h2", {}, "What the game has shown you"));
@@ -1244,7 +1395,9 @@ async function gearScreen(center, side, details) {
       ["Quests with item rewards", String(cnt(known.quests))],
       ["Merchant items", String(cnt(known.vendors))],
       ["In your bags", String(G.arr(gear.bags).length)],
-    ]), h("p", { class: "sub" }, "Forever reworked many items under their old IDs, so the page only trusts what your own game reports. Accept quests and open merchants to grow this."));
+    ]), h("p", { class: "sub" }, isMists()
+      ? "Includes the rewards of the quests you can take now: the addon looks their items up in the game when you log in, and wowsims' MoP item database (MIT) fills in the rest."
+      : "Forever reworked many items under their old IDs, so the page only trusts what your own game reports. Accept quests and open merchants to grow this."));
   };
 
   const save = () => store.set("gear:" + S.charKey, JSON.stringify({ cls: st.cls, spec: st.spec, kind: st.kind }));
@@ -1253,14 +1406,16 @@ async function gearScreen(center, side, details) {
   specPick.addEventListener("change", () => { st.spec = specPick.value; save(); draw(); });
   kindPick.addEventListener("change", () => { st.kind = kindPick.value; save(); draw(); });
   draw();
-  modelPanel(snap, gear.slots || {}, stage, mstat, lookBox); // after draw: the stage is on the page
+  modelPanel(snap, gear.slots || {}, stage, mstat, lookBox, c.db.look, c.db.tmog); // after draw: the stage is on the page
 }
-// The 3D character (model.js). Face, hair and skin are not something the game
-// tells addons. LOOK_PICKER off (Michael's call, 2026-10-18): the model is the
-// race's default look in the body the save names, and the face/hair/body
-// pickers stay hidden; on, they are picked once and remembered in this browser.
-const LOOK_PICKER = false;
-async function modelPanel(snap, worn, stage, mstat, lookBox) {
+// The 3D character (model.js), wearing your own look when a barber's chair has
+// read it (seen: Export.lua E.look). Until then, the face/hair/body pickers are
+// the stand-in, folded away under "Match your face and hair by hand": picked once,
+// remembered in this browser, replaced by the real look once the barber reads it.
+// tmog: the outfit looks the addon read at the transmogrifier (Export.lua E.tmog)
+async function modelPanel(snap, worn, stage, mstat, lookBox, seen, tmog) {
+  const mine = G.arr(seen && seen.options).map(o => ({ optionId: o.o, choiceId: o.c })).filter(o => o.optionId != null && o.choiceId != null);
+  const byHand = !mine.length;
   if (!I.picturesOn()) { // no Wowhead pictures (Settings): the 3D character is in the game
     stage.classList.add("noart"); lookBox.hidden = true;
     stage.replaceChildren(h("div", {}, h("p", {}, "Your character in 3D is in the game:"), h("p", {}, h("code", {}, "/zug model")), h("p", { class: "muted" }, "(or turn on pictures in Settings)")));
@@ -1270,17 +1425,15 @@ async function modelPanel(snap, worn, stage, mstat, lookBox) {
   const race = M.raceId(snap);
   if (!race) { mstat.textContent = "No 3D model: this save does not say your race. /reload with the updated addon."; return; }
   const key = "look:" + S.charKey;
-  const look = LOOK_PICKER ? JSON.parse(store.get(key) || "{}") : {};
+  const look = byHand ? JSON.parse(store.get(key) || "{}") : {};
   if (look.body == null && snap.sex) look.body = snap.sex === 3 ? 1 : 0;
-  lookBox.hidden = !LOOK_PICKER;
+  lookBox.hidden = !byHand;
   let opts = [], items = [], missing = [];
   const paint = async () => {
-    mstat.textContent = "Loading your character from Wowhead's model files (the first time takes a few seconds)...";
+    // no running commentary under the model (Michael, 2026-10-18): only a failure says something
+    mstat.textContent = "";
     try {
-      await M.show(stage, { race, body: look.body || 0, items, options: LOOK_PICKER ? M.charOptions(opts, look) : [] });
-      mstat.textContent = (missing.length ? `Not drawn, because Wowhead's Forever database does not have it yet: ${missing.join(", ")}. ` : "")
-        + (LOOK_PICKER ? "Drag to turn it. The game does not tell addons your face or hair, so set them below."
-          : "Drag to turn it. Face and hair are your race's default look: the game does not tell addons yours.");
+      await M.show(stage, { race, body: look.body || 0, items, options: mine.length ? mine : M.charOptions(opts, look) });
     } catch (e) {
       mstat.textContent = `The 3D model could not load (${e.message}). The rest of the page works without it.`;
     }
@@ -1294,21 +1447,31 @@ async function modelPanel(snap, worn, stage, mstat, lookBox) {
       return h("label", {}, name + " ", s);
     };
     const reload = async b => { look.body = b; opts = await M.customization(race * 2 - 1 + b).catch(() => []); pickers(); save(); };
-    lookBox.replaceChildren(h("summary", {}, "Face, hair and body"),
+    lookBox.replaceChildren(h("summary", {}, "Match your face and hair by hand"),
       h("div", { class: "lookgrid" },
         sel("Body", 2, look.body, reload, ["1", "2"]),
         opts.filter(o => o.Choices && o.Choices.length > 1).map(o => sel(o.Name || `option ${o.Id}`, o.Choices.length, look[o.Id], v => { look[o.Id] = v; }))),
       h("button", { type: "button", class: "btn", onclick: () => { for (const k of Object.keys(look)) if (k !== "body") delete look[k]; pickers(); save(); } }, "Back to the default look"));
   };
   try {
-    const ids = M.DRAWN.map(sl => worn[sl] && worn[sl].id).filter(Boolean);
-    const [looks, o] = await Promise.all([ids.length ? api(`/api/looks?ids=${ids.join(",")}`) : {}, LOOK_PICKER ? M.customization(race * 2 - 1 + (look.body || 0)).catch(() => []) : []]);
+    // what each slot shows: the outfit look read at the transmogrifier, else
+    // the item's own transmog (Export.lua appearance), nothing when the look is
+    // hidden, else the item itself
+    const shown = {};
+    const outfit = (tmog && tmog.slots) || {};
+    for (const [sl, it] of Object.entries(worn)) {
+      const t = outfit[sl] || it.tmog;
+      if (t && t.hidden) continue;
+      shown[sl] = t && t.id ? { ...it, id: t.id, name: t.name || it.name } : it;
+    }
+    const ids = M.DRAWN.map(sl => shown[sl] && shown[sl].id).filter(Boolean);
+    const [looks, o] = await Promise.all([ids.length ? api(`/api/looks?ids=${ids.join(",")}`) : {}, byHand ? M.customization(race * 2 - 1 + (look.body || 0)).catch(() => []) : []]);
     opts = o;
-    ({ items, missing } = M.viewerItems(worn, looks));
+    ({ items, missing } = M.viewerItems(shown, looks));
   } catch (e) {
     mstat.textContent = `Could not look up your items on Wowhead (${e.message}).`;
   }
-  if (LOOK_PICKER) pickers();
+  if (byHand) pickers();
   await paint();
 }
 
@@ -1316,7 +1479,8 @@ const label = G.label;
 // UnitRace's file name ("Scourge") as players say it
 const raceName = r => ({ Scourge: "Undead", NightElf: "Night elf", BloodElf: "Blood elf" })[r] || r || "";
 const fmtScore = v => v == null ? "--" : Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(1);
-const pickWhy = p => !p ? "" : p.gain != null ? `+${fmtScore(p.gain)} for your ${label(p.slot).toLowerCase()}` : `no upgrade among them; it sells for the most (${G.money(p.sell)})`;
+const pickWhy = p => !p ? "" : p.gain != null ? `+${fmtScore(p.gain)} for your ${label(p.slot).toLowerCase()}`
+  : p.sell ? `no upgrade among them; it sells for the most (${G.money(p.sell)})` : "no upgrade among them for you";
 
 // Field notes from the Gear and Quests data: upgrades waiting, repairs, log
 // space spent on quests the route skips. [[figure, text], ...]
@@ -1356,7 +1520,7 @@ const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;"
 async function gearStops(c) {
   const gear = c.db.gear;
   if (!gear) return [];
-  const known = await cached("items", "/api/items");
+  const known = await withQuestRewards(c, await cached("items", "/api/items"));
   let steps = [];
   if (c.db.route) { try { steps = (await cached("route:" + c.db.route, `/api/route?name=${encodeURIComponent(c.db.route)}`)).steps; } catch { } }
   const cw = await charWeights(c);
@@ -1378,17 +1542,80 @@ async function gearStops(c) {
     const p = G.bestChoice(opts, worn, w, cw.cls, cw.lvl);
     const st = steps.find(s => s.q === +q && s.act === "turnin");
     if (p && p.gain != null && st) out.push({ at: st, it: p.it, gain: p.gain, slot: p.slot, how: `reward of ${r.title || "quest " + q}: turn it in here` });
+    // Mists, no route: a quest you can still pick up, at its giver (the quest data)
+    else if (p && p.gain != null && r.giver && !r.inLog) out.push({ at: r.giver, it: p.it, gain: p.gain, slot: p.slot, how: `reward of ${r.title || "quest " + q}: pick the quest up here` });
   }
   return out;
 }
 
+// Mists ratings (Export.lua E.ratings: { rating, percent } each, from the game)
+// and what 1% costs at your level (data/mists/ratings.json, Blizzard's table via
+// wowsims). Casters' spell numbers, everyone else's melee ones.
+const CASTER_SPECS = new Set(["balance", "restoration", "elemental", "holy", "discipline", "shadow", "mistweaver", "arcane", "fire", "frost", "affliction", "demonology", "destruction"]);
+function casterSpec(cls, spec) {
+  if (["MAGE", "PRIEST", "WARLOCK"].includes(cls)) return true;
+  if (["WARRIOR", "ROGUE", "DEATHKNIGHT", "HUNTER"].includes(cls)) return false;
+  const trees = G.arr(spec && spec.trees), active = spec && spec.cur && trees[spec.cur - 1];
+  return !!(active && CASTER_SPECS.has(String(active.name).toLowerCase()));
+}
+const pct = v => v == null ? "--" : `${(Math.round(v * 100) / 100).toFixed(2)}%`;
+function ratingText(r, caster) {
+  const one = (name, x) => x ? `${name} ${pct(x[1])}${x[0] != null ? ` (${x[0]})` : ""}` : null;
+  const list = caster ? [one("hit", r.hit), one("crit", r.crit), one("haste", r.haste), one("mastery", r.mastery)]
+    : [one("hit", r.meleeHit), one("crit", r.meleeCrit), one("haste", r.meleeHaste), one("expertise", r.expertise), one("mastery", r.mastery)];
+  return list.filter(Boolean).join(", ");
+}
+function costText(data, level, caster) {
+  const r = data.levels && data.levels[String(level)];
+  if (!r) return "--";
+  const n = v => (Math.round(v * 10) / 10).toString();
+  return caster ? `hit ${n(r.hit_spell)}, crit ${n(r.crit_spell)}, haste ${n(r.haste_spell)}, mastery ${n(r.mastery)} rating at level ${level}`
+    : `hit ${n(r.hit_melee)}, crit ${n(r.crit_melee)}, haste ${n(r.haste_melee)}, expertise ${n(r.expertise)}, mastery ${n(r.mastery)} rating at level ${level}`;
+}
+
+// Mists talents: wowsims' build for the active spec (data/mists/talents.json,
+// MIT) against what you picked (Export.lua: gear.spec.tiers, a column per tier,
+// 0 = none; gear.spec.glyphs, the glyphs' spells).
+function talentsCard(data, cls, spec, level) {
+  const card = h("section", { class: "card wide" }, h("h2", {}, "Talents"));
+  const d = data.classes && data.classes[cls];
+  if (!d) { card.append(h("p", { class: "sub" }, "No talent data for this class.")); return card; }
+  const trees = G.arr(spec.trees);
+  const active = spec.cur && trees[spec.cur - 1] && trees[spec.cur - 1].name;
+  const mineSpec = d.builds.filter(b => active && b.spec.toLowerCase() === String(active).toLowerCase());
+  const b = mineSpec.find(x => x.name === "Default") || mineSpec[0];
+  if (!b) { card.append(h("p", { class: "sub" }, active ? `No build for ${active} yet.` : "Pick a specialization in game (then /reload) and the build for it shows here.")); return card; }
+  const mine = G.arr(spec.tiers);
+  card.append(h("p", { class: "sub" }, `${b.spec}, wowsims' "${b.name}" build: a level-90 raid build (`,
+    h("a", { href: "https://github.com/wowsims/mop", target: "_blank", rel: "noopener" }, "wowsims/mop"),
+    ", MIT). The tiers are the same at any level; for PvP or questing another pick can suit you better. In game: /zug talents."));
+  card.append(h("table", { class: "talents" },
+    h("thead", {}, h("tr", {}, h("th", {}, "Level"), h("th", {}, ""), h("th", {}, ""), h("th", {}, ""))),
+    h("tbody", {}, d.levels.map((lv, i) => {
+      const rec = +b.talents[i] || 0, my = +mine[i] || 0, open = level >= lv;
+      return h("tr", { class: open ? "" : "locked" }, h("td", {}, String(lv)),
+        G.arr(d.tiers[i]).map((o, k) => {
+          const col = k + 1;
+          const cls = [col === rec ? "rec" : "", col === my ? "mine" : ""].filter(Boolean).join(" ");
+          const note = col === my && col === rec ? "yours, the build's" : col === my ? "yours" : col === rec ? (open && !my ? "pick this" : "the build's") : "";
+          return h("td", { class: cls }, h("a", { href: `${WOWHEAD}/spell=${o && o.spell}`, target: "_blank", rel: "noopener" }, o ? o.name : "?"),
+            note ? h("div", { class: "muted" }, note) : null);
+        }));
+    }))));
+  const have = new Set(G.arr(spec.glyphs).map(Number));
+  const glyphRow = (kind, list) => h("p", {}, h("b", {}, kind + ": "), ...list.map((g, i) => h("span", {}, i ? ", " : "",
+    h("a", { href: `${WOWHEAD}/item=${g.item}`, target: "_blank", rel: "noopener" }, g.name), have.has(g.spell) ? " (have)" : "")));
+  card.append(glyphRow("Major glyphs", G.arr(b.major)), glyphRow("Minor glyphs", G.arr(b.minor)));
+  return card;
+}
+
 // The weights the character's Gear tab uses (saved spec, talents, route).
 async function charWeights(c) {
-  const weights = await cached("weights", "data/weights.json");
+  const weights = await cached("weights", weightsPath());
   const snap = c.db.char || {}, gear = c.db.gear || {};
   const pref = JSON.parse(store.get("gear:" + S.charKey) || "{}");
   const cls = (snap.class || "").toUpperCase();
-  return { cls, lvl: snap.level || 1, ...G.weightsForChar(weights.sets, cls, snap.level || 1, gear.spec && gear.spec.trees, c.db.route, pref.cls && pref.cls !== cls ? {} : pref) };
+  return { cls, lvl: snap.level || 1, ...G.weightsForChar(weights.sets, cls, snap.level || 1, gear.spec && gear.spec.trees, c.db.route, pref.cls && pref.cls !== cls ? {} : pref, gear.spec && gear.spec.cur) };
 }
 
 // ------------------------------------------------------------------ quests
@@ -1651,6 +1878,10 @@ async function aboutTab(view) {
         h("li", {}, h("code", {}, "/zug errors"), " makes a report to copy and send. It has no character name in it."),
         h("li", {}, "The page is behind the game? It shows what the game last saved: press Sync, or ", h("code", {}, "/zug live on"), " for updates between saves."),
         h("li", {}, "The page keeps copies of your saves. If one is ever wiped, Character offers to restore it."))),
+    sec("The backdrop: panefx",
+      h("p", {}, "The animation behind the page is ", h("a", { href: "https://github.com/michael-slop/panefx", target: "_blank", rel: "noopener" }, "panefx"),
+        "'s, the author's animated ASCII backdrops for Windows terminals and desktops. Its effects are ported here line for line: flames (msimpson's fire, the default), rain, plasma and starfield."),
+      h("p", { class: "sub" }, "Like panefx, it wears the theme you pick: the flames' hot, warm, cool and dim come from the theme's accent, blue and magenta the way panefx works them out. Pick another or switch it off with Backdrop, top right. It runs at 30 frames a second, like the 3D models, stops while the tab is hidden, and stays off if your system asks for less motion.")),
     sec("Privacy",
       h("p", {}, "Everything stays on this PC. The page reads the addon's saves and the game's chat log, nothing else."),
       h("p", { class: "sub" }, "Two things reach outside, and both are off until you switch them on in Settings: pictures from Wowhead, and the new-version check (GitHub). Phone mode answers only a phone you pair.")),
@@ -1659,9 +1890,10 @@ async function aboutTab(view) {
         h("li", {}, "Routes, danger data, talent guides and stat weights: ", h("a", { href: "https://github.com/RestedXP/RXPGuides", target: "_blank", rel: "noopener" }, "RestedXP Guides"), ", CC BY-NC-SA 4.0 (credit RestedXP, non-commercial, share alike)."),
         h("li", {}, "Quest facts and loot lists: ", h("a", { href: "https://github.com/ATTWoWAddon/AllTheThings", target: "_blank", rel: "noopener" }, "AllTheThings"), ", MIT."),
         h("li", {}, "Profession data: ProfessionLevelingGuide, MIT."),
+        h("li", {}, "Mists of Pandaria item stats, stat weights and talent builds: ", h("a", { href: "https://github.com/wowsims/mop", target: "_blank", rel: "noopener" }, "wowsims/mop"), ", MIT (Copyright (c) 2022 wowsims team)."),
         h("li", {}, "The peon: ", h("a", { href: "https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868", target: "_blank", rel: "noopener" }, "“[Warcraft] - Orc peon”"), " by ", h("a", { href: "https://sketchfab.com/Northcliffe", target: "_blank", rel: "noopener" }, "Northcliffe"), ", ", h("a", { href: "http://creativecommons.org/licenses/by-nc/4.0/", target: "_blank", rel: "noopener" }, "CC BY-NC 4.0"), ", a fan-made remake of Blizzard's character; his lines are the Warcraft III peon's, spoken in a voice from a friend of the project's impressions, used with permission (rendered with Chatterbox TTS). Drawn with three.js (MIT)."),
-        h("li", {}, "Fonts: BigBlueTerm437 (VileR, Nerd Fonts, CC BY-SA 4.0), UnifrakturMaguntia (SIL OFL 1.1). Themes from panefx and their designers."),
-        h("li", {}, "Quest and item links open Wowhead's Forever pages. With pictures on, the 3D character, icons and maps come from Wowhead (World of Warcraft art is Blizzard's); jQuery (MIT) runs that viewer. Phone pairing draws its QR code with qrcode-generator (MIT)."),
+        h("li", {}, "Fonts: BigBlueTerm437 (VileR, Nerd Fonts, CC BY-SA 4.0), UnifrakturMaguntia (SIL OFL 1.1). Themes and backdrops from ", h("a", { href: "https://github.com/michael-slop/panefx", target: "_blank", rel: "noopener" }, "panefx"), "; the themes are their designers' (credited in panefx's THEMES.md); the flames are a port of msimpson's gist."),
+        h("li", {}, "Quest and item links open Wowhead's pages for the game shown (Forever or Mists of Pandaria Classic). With pictures on, the 3D character, icons and maps come from Wowhead (World of Warcraft art is Blizzard's); jQuery (MIT) runs that viewer. Phone pairing draws its QR code with qrcode-generator (MIT)."),
         h("li", {}, "World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.")))));
 }
 
@@ -1680,13 +1912,20 @@ async function loadChar() {
 
 // The helper (peon.js): a Warcraft III style portrait in the corner. Loaded
 // after the page, so a slow or missing WebGL never holds the page up.
-let peon = null, peonSaid = null;
+let peon = null, peonSaid = null, peonSaidAt = 0;
 let peonLines = { tabs: {} };
 import("./peon.js").then(async m => {
   peonLines = await m.loadLines();
   let voice = false;
   try { voice = (await api("/api/voice")).on; } catch { }
-  peon = m.helper(document.getElementById("helper"), { onPoke: peonAdvice, voice });
+  // a click repeats his advice only if he has not just said it; otherwise it is a poke
+  const onPoke = () => {
+    const a = peonAdvice();
+    if (!a || (a === peonSaid && Date.now() - peonSaidAt < 60000)) return null;
+    peonSaid = a; peonSaidAt = Date.now();
+    return a;
+  };
+  peon = m.helper(document.getElementById("helper"), { onPoke, voice });
   peonUpdate();
   // with a helper model set up (ask.go, Map & Quests), questions go to the peon
   try {
@@ -1729,9 +1968,9 @@ async function peonUpdate() {
   const snap = db.char || {};
   let steps = 0;
   if (db.route) { try { steps = (await cached("route:" + db.route, `/api/route?name=${encodeURIComponent(db.route)}`)).steps.length; } catch { } }
-  peon.bars(snap.xp || 0, snap.xpMax || 0, Math.min(db.step || 1, steps), steps);
+  peon.bars(snap.xp || 0, snap.xpMax || 0, Math.min(db.step || 1, steps), steps, db.route === "Quest log" ? "quest log" : null);
   const line = peonAdvice() || (peonLines.ready || ["Something need doing?"])[0];
-  if (line !== peonSaid) { peonSaid = line; peon.say(line); }
+  if (line !== peonSaid) { peonSaid = line; peonSaidAt = Date.now(); peon.say(line); }
 }
 
 async function render() {
@@ -1753,10 +1992,13 @@ function go(tab) {
 
 async function refresh(first) {
   S.state = await api("/api/state");
+  G.setGame(isMists() ? "mists" : "forever");
+  WOWHEAD = G.WOWHEAD;
   S.cache = {};
   const pick = document.getElementById("charPick");
   const chars = S.state.chars || [];
   pick.replaceChildren(...chars.map(c => h("option", { value: c.key }, `${c.name} (${c.realm})`)));
+  pick.hidden = !chars.length; // a game nobody has logged in to with the addon yet
   if (!S.charKey || !chars.some(c => c.key === S.charKey)) {
     const latest = chars.slice().sort((a, b) => b.saved - a.saved)[0];
     S.charKey = latest && latest.key;
@@ -1764,13 +2006,14 @@ async function refresh(first) {
   if (S.charKey) pick.value = S.charKey;
   await loadChar();
   const meta = chars.find(c => c.key === S.charKey);
-  document.getElementById("saved").textContent = meta ? `saved by the game ${ago(meta.saved)}` : "";
+  document.getElementById("saved").textContent = meta ? `saved ${ago(meta.saved)}` : "";
   if (!first) await render();
 }
 
 async function poll() {
   try {
     const v = (await api("/api/version")).version;
+    if (document.body.classList.contains("gated")) { setTimeout(poll, 3000); return; } // nothing shown yet
     if (S.version && v !== S.version) await refresh(false);
     S.version = v;
   } catch { }
@@ -1793,6 +2036,7 @@ const mix = (a, b, t) => { const x = rgb(a), y = rgb(b); return "#" + x.map((v, 
 const lum = hex => { const [r, g, b] = rgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
 
 function applyTheme(t) {
+  bd.theme(t.colors); // the backdrop wears the theme, as panefx's effects do
   const c = t.colors, bg = c.background, fg = c.foreground;
   const dark = lum(bg) < 0.4;
   const root = document.documentElement.style;
@@ -1885,10 +2129,16 @@ async function phonePanel() {
 phonePanel();
 
 // Settings: pictures from Wowhead (settings.go), the player's own choice.
+// The Settings drawer: the look (theme, backdrop) and phone pairing are in the
+// page; what only this PC may change (pictures, updates, the voice) fills
+// #settingsBody when it opens. A phone gets the look only.
 function settingsPanel() {
-  const box = document.getElementById("settings"), btn = document.getElementById("settingsBtn");
-  if (location.hostname !== "127.0.0.1" && location.hostname !== "localhost") { btn.hidden = true; return; }
+  const drawer = document.getElementById("settings"), btn = document.getElementById("settingsBtn");
+  const box = document.getElementById("settingsBody");
+  const local = location.hostname === "127.0.0.1" || location.hostname === "localhost";
+  if (!local) document.getElementById("phoneGroup").hidden = true;
   const draw = async () => {
+    if (!local) return;
     let st;
     try { st = await api("/api/settings"); } catch (e) { box.replaceChildren(h("p", { class: "note bad" }, e.message)); return; }
     const cb = h("input", { type: "checkbox" }); cb.checked = !!st.wowhead;
@@ -1927,7 +2177,7 @@ function settingsPanel() {
         h("div", { class: "row" }, h("label", {}, "Voice ", vname), h("label", {}, "Chatterbox for new lines ", vsrv), h("button", { class: "btn", type: "button", onclick: save }, "Save")),
         h("p", { class: "sub" }, `${vc.cached} of his lines are ready in "${vc.name}". Others are rendered by the Chatterbox above when it is running (leave it empty for the ready lines only), and kept on this PC. His fixed lines come with the companion (tools/peon_voice.py --ship makes them).`));
     }
-    box.replaceChildren(h("h2", {}, "Settings"),
+    box.replaceChildren(h("h2", {}, "On this PC"),
       h("label", {}, cb, " Pictures from Wowhead: the 3D character, item icons, zone maps and quest text when the game has not given it.", msg),
       h("p", { class: "sub" }, "Off by default. Wowhead's terms of use do not allow downloads by programs other than a web browser, which is how the companion would get them, so this is your call for your own PC. With it off the page uses only what your game reports, and the 3D character is in the game: /zug model."),
       h("label", {}, up, " Tell me when a new version is out.", upMsg),
@@ -1935,12 +2185,86 @@ function settingsPanel() {
       voiceBox);
   };
   btn.addEventListener("click", () => {
-    box.hidden = !box.hidden;
-    btn.setAttribute("aria-expanded", String(!box.hidden));
-    if (!box.hidden) draw();
+    drawer.hidden = !drawer.hidden;
+    btn.setAttribute("aria-expanded", String(!drawer.hidden));
+    if (!drawer.hidden) draw();
   });
 }
 settingsPanel();
+
+// The game gate (games.go): with more than one game ready on this PC, the
+// page asks which one before it shows anything (Forever, Mists of Pandaria,
+// Classic Era & Hardcore ...); a client without the addon is listed as not set
+// up. Settings > Change game asks again. A phone shows what this PC chose: it
+// reads, it does not switch.
+const LOCAL = location.hostname === "127.0.0.1" || location.hostname === "localhost";
+let GAMES = [];
+async function loadGames() {
+  try { GAMES = (await api("/api/games")).games || []; } catch { GAMES = []; }
+  const cur = GAMES.find(g => g.current);
+  document.getElementById("gameGroup").hidden = !LOCAL || GAMES.filter(g => g.ready).length < 2;
+  document.getElementById("gameNow").textContent = cur ? `Showing ${cur.name}.` : "";
+}
+function askGame() {
+  const gate = document.getElementById("gate"), list = document.getElementById("gameList");
+  let last = null;
+  try { last = localStorage.getItem("zugGame"); } catch { }
+  return new Promise(done => {
+    const pick = async g => {
+      try {
+        await api("/api/game", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ client: g.client }) });
+      } catch (e) {
+        list.append(h("p", { class: "note bad" }, `Could not open ${g.name}: ${e.message}`));
+        return;
+      }
+      try { localStorage.setItem("zugGame", g.client); } catch { }
+      gate.hidden = true;
+      document.body.classList.remove("gated");
+      await loadGames();
+      done();
+    };
+    const order = [...GAMES].sort((a, b) => b.ready - a.ready); // playable first, by name (the server's order)
+    list.replaceChildren(...order.map(g => h("button", { type: "button", class: "game" + (g.client === last ? " last" : ""), disabled: !g.ready, onclick: () => pick(g) },
+      h("span", { class: "gname" }, g.name),
+      h("span", { class: "gver" }, !g.ready ? "The addon is not installed in this game yet." : g.client === last ? `Version ${g.version}, last time's game` : `Version ${g.version}`))));
+    document.body.classList.add("gated");
+    gate.hidden = false;
+    const first = list.querySelector("button.last:not([disabled])") || list.querySelector("button:not([disabled])");
+    if (first) first.focus();
+  });
+}
+// ?game=_classic_ opens that game without asking (a bookmark per game)
+async function gameGate() {
+  await loadGames();
+  if (!LOCAL || GAMES.filter(g => g.ready).length < 2) return;
+  const want = GAMES.find(g => g.ready && g.client === new URLSearchParams(location.search).get("game"));
+  if (want) {
+    try {
+      await api("/api/game", { method: "POST", headers: { "X-Zugzug": "1", "Content-Type": "application/json" }, body: JSON.stringify({ client: want.client }) });
+      await loadGames();
+      return;
+    } catch { }
+  }
+  await askGame();
+}
+document.getElementById("gameBtn").addEventListener("click", async () => {
+  document.getElementById("settings").hidden = true;
+  document.getElementById("settingsBtn").setAttribute("aria-expanded", "false");
+  await askGame();
+  S.charKey = null; // the newest character of that game
+  S.version = null;
+  await refresh(false);
+});
+
+// the backdrop: flames unless this browser picked another (or off)
+{
+  const pick = document.getElementById("backdropPick");
+  let saved = null;
+  try { saved = localStorage.getItem("ledgerBackdrop"); } catch { }
+  pick.value = [...pick.options].some(o => o.value === saved) ? saved : "flames";
+  bd.effect(pick.value);
+  pick.addEventListener("change", () => { bd.effect(pick.value); try { localStorage.setItem("ledgerBackdrop", pick.value); } catch { } });
+}
 
 I.attachTips(); // the game's item tooltips, anywhere an item is shown
 I.watchIcons(document.getElementById("view"));
@@ -1948,5 +2272,5 @@ for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("c
 window.addEventListener("hashchange", () => { const t = location.hash.slice(1); if (t && (OLD_TABS[t] || t) !== S.tab) go(t); }); // links like the footer's #about
 document.getElementById("charPick").addEventListener("change", async e => { S.charKey = e.target.value; S.cache = {}; await loadChar(); render(); });
 S.tab = location.hash.slice(1) || "character";
-api("/api/settings").then(st => I.setPictures(st.wowhead)).catch(() => { }).then(themes).then(() => refresh(true)).then(() => go(S.tab)).catch(e => { document.getElementById("view").append(h("div", { class: "note bad" }, "Cannot read the addon's data: " + e.message)); });
+api("/api/settings").then(st => I.setPictures(st.wowhead)).catch(() => { }).then(themes).then(gameGate).then(() => refresh(true)).then(() => go(S.tab)).catch(e => { document.getElementById("view").append(h("div", { class: "note bad" }, "Cannot read the addon's data: " + e.message)); });
 poll();

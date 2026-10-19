@@ -78,9 +78,36 @@ end
 
 -- --------------------------------------------------------------- quests
 
+-- Forever (1.60.1) asks C_QuestLog. Mists of Pandaria Classic (5.5.4) still has
+-- the older quest log globals and lacks most of C_QuestLog: GetNumQuestLogEntries,
+-- GetQuestLogTitle(i) -> title, level, questTag, isHeader, isCollapsed,
+-- isComplete (1 done, -1 failed), frequency, questID (Cata QuestLogFrame.lua:232),
+-- IsQuestComplete(questID) (QuestDataProvider.lua:139), GetQuestLogIndexByID,
+-- GetQuestsCompleted. Every quest call below tries the new one, then the old.
 function C.isOnQuest(q) return (C_QuestLog and try(C_QuestLog.IsOnQuest, q)) and true or false end
-function C.isComplete(q) return (C_QuestLog and try(C_QuestLog.IsComplete, q)) and true or false end
+function C.isComplete(q)
+  if C_QuestLog and C_QuestLog.IsComplete then return try(C_QuestLog.IsComplete, q) and true or false end
+  return try(IsQuestComplete, q) and true or false
+end
 function C.isTurnedIn(q) return (C_QuestLog and try(C_QuestLog.IsQuestFlaggedCompleted, q)) and true or false end
+
+-- Every questID ever turned in, as a set { [questID] = true }, or nil.
+-- C_QuestLog.GetAllCompletedQuestIDs is a list; the old GetQuestsCompleted a set.
+function C.completedSet()
+  local all = C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs and try(C_QuestLog.GetAllCompletedQuestIDs)
+  if type(all) == "table" then
+    local set = {}
+    for _, q in ipairs(all) do set[q] = true end
+    return set
+  end
+  all = try(GetQuestsCompleted)
+  if type(all) ~= "table" then return nil end
+  local set = {}
+  for k, v in pairs(all) do
+    if type(k) == "number" and v then set[k] = true elseif type(v) == "number" then set[v] = true end
+  end
+  return set
+end
 
 -- The quest's objectives as the game reports them: { text, finished,
 -- numFulfilled, numRequired } each (QuestObjectiveInfo in the 1.60.1 export).
@@ -96,21 +123,93 @@ function C.objectiveDone(q, obj)
   return (o and o.finished) and true or false
 end
 
+-- The quest log, row by row: { i, title, level, isHeader, questID, isComplete }.
+-- C_QuestLog.GetInfo where the game has it, else GetQuestLogTitle.
+function C.questLog()
+  local out = {}
+  if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
+    for i = 1, (try(C_QuestLog.GetNumQuestLogEntries) or 0) do
+      local info = try(C_QuestLog.GetInfo, i)
+      if info then
+        out[#out + 1] = { i = i, title = info.title, level = info.level, isHeader = info.isHeader and true or false, questID = info.questID }
+      end
+    end
+  elseif GetNumQuestLogEntries and GetQuestLogTitle then
+    for i = 1, (try(GetNumQuestLogEntries) or 0) do
+      local title, level, _, isHeader, _, isComplete, _, questID = try(GetQuestLogTitle, i)
+      if title then
+        out[#out + 1] = { i = i, title = title, level = level, isHeader = isHeader and true or false, questID = questID,
+          isComplete = type(isComplete) == "number" and isComplete > 0 }
+      end
+    end
+  end
+  return out
+end
+
 function C.questTitle(q)
-  return (C_QuestLog and try(C_QuestLog.GetTitleForQuestID, q)) or nil
+  if C_QuestLog and C_QuestLog.GetTitleForQuestID then return try(C_QuestLog.GetTitleForQuestID, q) or nil end
+  local i = q and GetQuestLogIndexByID and try(GetQuestLogIndexByID, q)
+  if i and i > 0 then return (try(GetQuestLogTitle, i)) or nil end
+  -- any quest, in the log or not (Mists QuestLogDocumentation: GetQuestInfo
+  -- -> title, MayReturnNothing until the client has the quest cached)
+  return (C_QuestLog and try(C_QuestLog.GetQuestInfo, q)) or nil
+end
+
+-- A quest log row's own words: description, objectives text. Forever takes
+-- the row; the older GetQuestLogQuestText() reads the selected row (TBC
+-- QuestLogFrame.lua:371), so select it and put the selection back.
+function C.questText(i)
+  if not (GetQuestLogSelection and SelectQuestLogEntry) or (C_QuestLog and C_QuestLog.GetInfo) then
+    return try(GetQuestLogQuestText, i)
+  end
+  local was = try(GetQuestLogSelection)
+  try(SelectQuestLogEntry, i)
+  local desc, ask = try(GetQuestLogQuestText)
+  if was then try(SelectQuestLogEntry, was) end
+  return desc, ask
 end
 
 -- questIDs currently in the log (headers skipped).
 function C.questLogIDs()
   local out = {}
-  if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries) then return out end
-  for i = 1, (try(C_QuestLog.GetNumQuestLogEntries) or 0) do
-    local info = try(C_QuestLog.GetInfo, i)
-    if info and not info.isHeader and info.questID and info.questID > 0 then
-      out[#out + 1] = info.questID
-    end
+  for _, e in ipairs(C.questLog()) do
+    if not e.isHeader and e.questID and e.questID > 0 then out[#out + 1] = e.questID end
   end
   return out
+end
+
+-- ------------------------------------------------------------- tooltips
+
+-- An item's tooltip as { lines = { { leftText, rightText, leftColor, rightColor } } },
+-- the shape C_TooltipInfo.GetHyperlink returns on Forever. Mists of Pandaria
+-- has no C_TooltipInfo, so there a hidden GameTooltip is filled with the link
+-- and its rows (<name>TextLeftN / TextRightN, GameTooltipTemplate) read back.
+local scanTip
+local function color(fs)
+  local r, g, b = try(fs.GetTextColor, fs)
+  if type(r) ~= "number" then return nil end
+  return { GetRGB = function() return r, g, b end }
+end
+function C.tooltip(link)
+  if C_TooltipInfo and C_TooltipInfo.GetHyperlink then return try(C_TooltipInfo.GetHyperlink, link) end
+  if type(link) ~= "string" or not CreateFrame then return nil end
+  if not scanTip then
+    scanTip = try(CreateFrame, "GameTooltip", "ZugzugScanTip", nil, "GameTooltipTemplate")
+    if not scanTip then return nil end
+  end
+  try(scanTip.SetOwner, scanTip, WorldFrame, "ANCHOR_NONE")
+  try(scanTip.ClearLines, scanTip)
+  if not try(function() scanTip:SetHyperlink(link) return true end) then return nil end
+  local out = {}
+  for i = 1, (try(scanTip.NumLines, scanTip) or 0) do
+    local l, r = _G["ZugzugScanTipTextLeft" .. i], _G["ZugzugScanTipTextRight" .. i]
+    out[#out + 1] = {
+      leftText = l and try(l.GetText, l), rightText = r and r:IsShown() and try(r.GetText, r) or nil,
+      leftColor = l and color(l), rightColor = r and color(r),
+    }
+  end
+  try(scanTip.Hide, scanTip)
+  return { lines = out }
 end
 
 -- ------------------------------------------------------------------ XP
@@ -129,6 +228,14 @@ function C.xpPreset()
   if p == 0 then return "classic" elseif p == 1 then return "modern" end
   return nil
 end
+
+-- Running on WoW: Forever? Its C_GameRules.GetForeverExperiencePreset is in
+-- the 1.60.1 export and not in Mists of Pandaria Classic's (Ketho's lists for
+-- both). Forever-only data (RestedXP routes, talents, the danger list, the 1-300
+-- profession plan) is used only when this is true: the TOC's
+-- [AllowLoadGameType camelot] tags did not keep the routes out on Mists (a Mists
+-- character was offered "RXP Undead Mage", 2026-10-18).
+function C.isForever() return (C_GameRules and C_GameRules.GetForeverExperiencePreset) and true or false end
 
 function C.now() return try(GetTime) or 0 end
 function C.epoch() return try(GetServerTime) or try(time) or 0 end

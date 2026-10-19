@@ -48,7 +48,8 @@ function M.points()
   for _, j in ipairs(E.upcoming(AHEAD * 2)) do
     if #steps >= AHEAD then break end
     local s = r.steps[j]
-    local cont, wx, wy = world(s)
+    local cont, wx, wy
+    if s then cont, wx, wy = world(s) end
     if cont then steps[#steps + 1] = { cont = cont, wx = wx, wy = wy, n = j, act = s.act } end
   end
   local cur = r.steps[i]
@@ -65,7 +66,7 @@ end
 local OBJ_MAX = 40
 function M.objectives()
   local out = {}
-  local db = ns.QuestDB or {}
+  local db = ns.QInfo and ns.QInfo.db() or {}
   for _, e in ipairs(ns.cdb and ns.cdb.questLog or {}) do
     local rec = e.q and not e.done and db[e.q]
     for _, o in ipairs(rec and rec.obj or {}) do

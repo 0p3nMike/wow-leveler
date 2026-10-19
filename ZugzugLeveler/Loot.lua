@@ -9,6 +9,11 @@
 -- GUID), so opening the same loot window again adds nothing.
 --   ZugzugLevelerDB.loot[npcID] = { name, n = corpses looted,
 --     items = { [itemID] = { c = corpses it dropped from, q = total quantity, name } } }
+-- Gathering: a slot whose source is a GameObject GUID (an herb, an ore vein, a
+-- chest) records where you stood, per map, so the page can show your nodes and
+-- /zug farm can walk them (Farm.lua). No open data has node spawns (they live on
+-- Blizzard's servers), so this map is your own, growing as you gather.
+--   ZugzugLevelerDB.nodes[uiMapID] = { { x, y, o = objectID, n = times, items = { [itemID] = { q, name } }, at } }
 
 local _, ns = ...
 local C = ns.C
@@ -20,6 +25,12 @@ local KEEP_NPCS = 500
 local seen, seenList = {}, {} -- corpse GUIDs already counted (the last 200)
 
 local function ok(v) return v ~= nil and not (issecretvalue and issecretvalue(v)) end
+
+-- GameObject-0-<server>-<instance>-<zone>-<objectID>-<spawn>, the same shape as a Creature GUID
+function L.objectOf(guid)
+  if not (ok(guid) and type(guid) == "string" and guid:find("^GameObject%-")) then return nil end
+  return tonumber(guid:match("^GameObject%-%d+%-%d+%-%d+%-%d+%-(%d+)%-"))
+end
 
 function L.npcOf(guid)
   if not (ok(guid) and type(guid) == "string" and guid:find("^Creature%-")) then return nil end
@@ -53,6 +64,7 @@ function L.read()
   local fresh = {} -- corpses first seen in this window
   local drops = {} -- guid -> { [itemID] = quantity }
   local names = {} -- itemID -> name (GetLootSlotInfo's second value)
+  local gathered = {} -- GameObject guid -> { [itemID] = quantity }
   for slot = 1, (C.try(GetNumLootItems) or 0) do
     local _, itemName, quantity, currencyID, _, _, _, _, _, isCoin = C.try(GetLootSlotInfo, slot)
     local id = not isCoin and not currencyID and itemOf(C.try(GetLootSlotLink, slot))
@@ -61,6 +73,10 @@ function L.read()
       local src = sources(slot, fallback)
       for _, s in ipairs(src) do
         local guid = s[1]
+        if L.objectOf(guid) and not seen[guid] then
+          gathered[guid] = gathered[guid] or {}
+          gathered[guid][id] = (gathered[guid][id] or 0) + (s[2] or (ok(quantity) and quantity) or 1)
+        end
         if L.npcOf(guid) and not seen[guid] then
           fresh[guid] = true
           drops[guid] = drops[guid] or {}
@@ -68,6 +84,12 @@ function L.read()
         end
       end
     end
+  end
+  for guid, items in pairs(gathered) do
+    L.node(L.objectOf(guid), items, names)
+    seen[guid] = true
+    seenList[#seenList + 1] = guid
+    if #seenList > 200 then seen[table.remove(seenList, 1)] = nil end
   end
   -- a corpse with nothing but coin still counts as looted: the target, if it is one
   if fallback and not seen[fallback] then fresh[fallback] = true end
@@ -92,6 +114,33 @@ function L.read()
     seen[guid] = true
     seenList[#seenList + 1] = guid
     if #seenList > 200 then seen[table.remove(seenList, 1)] = nil end
+  end
+end
+
+-- A node gathered where you stand: one point per spot (a point of the same object
+-- within NEAR map units is the same spawn, counted again), up to KEEP_NODES a map.
+local NEAR, KEEP_NODES = 0.004, 400
+function L.node(obj, items, names)
+  local map, x, y = C.mapPos()
+  if not (obj and map and x) then return end
+  ns.db.nodes = ns.db.nodes or {}
+  local list = ns.db.nodes[map] or {}
+  ns.db.nodes[map] = list
+  local hit
+  for _, p in ipairs(list) do
+    if p.o == obj and math.abs(p.x - x) < NEAR and math.abs(p.y - y) < NEAR then hit = p; break end
+  end
+  if not hit then
+    if #list >= KEEP_NODES then table.remove(list, 1) end
+    hit = { x = x, y = y, o = obj, n = 0, items = {} }
+    list[#list + 1] = hit
+  end
+  hit.n, hit.at = hit.n + 1, C.epoch()
+  for id, q in pairs(items) do
+    local e = hit.items[id] or { q = 0 }
+    hit.items[id] = e
+    e.q = e.q + q
+    e.name = e.name or names[id]
   end
 end
 

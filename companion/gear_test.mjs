@@ -66,5 +66,37 @@ check(aoe.spec === "AOE", "an AoE route with no talents yet uses AoE weights");
 const frost = weightsForChar(sets, "MAGE", 11, [{ name: "Frost", points: 5 }], "RXP Undead Mage AoE");
 check(frost.spec === "Frost", "talent points beat the route's hint");
 
+// ---- Mists of Pandaria Classic: its weight file (RestedXP leveling + wowsims), its items
+{
+  const G = await import("./web/gear.js");
+  const msets = JSON.parse(readFileSync(new URL("./web/data/mists/weights.json", import.meta.url))).sets;
+  const mitems = JSON.parse(readFileSync(new URL("./web/data/mists/items.json", import.meta.url))).items;
+  G.setGame("mists");
+  // a level 62 Frost mage: RestedXP has Arcane / Fire leveling weights there, Frost only wowsims
+  const trees = [{ name: "Arcane" }, { name: "Fire" }, { name: "Frost" }];
+  const fw = G.weightsForChar(msets, "MAGE", 62, trees, "Quest log", {}, 3);
+  check(fw.spec === "Frost" && fw.set && fw.set.src === "wowsims" && fw.set.w.ITEM_MOD_HIT_RATING_SHORT > 0, `active spec Frost found in wowsims' weights (${fw.kind})`);
+  const aw = G.weightsForChar(msets, "MAGE", 62, trees, "Quest log", {}, 1);
+  check(aw.spec === "Arcane" && aw.set.src === "RestedXP", "active spec Arcane uses RestedXP's leveling weights at 62");
+  // the game's Mists names without _SHORT are the weight files' names
+  const s = G.statsOf({ stats: { ITEM_MOD_CRIT_RATING: 14, ITEM_MOD_SPELL_POWER: 30, ITEM_MOD_INTELLECT_SHORT: 18 } });
+  check(s.ITEM_MOD_CRIT_RATING_SHORT === 14 && s.STAT_SPELLDAMAGE === 30 && s.ITEM_MOD_INTELLECT_SHORT === 18, "Mists stat names unified; spell power as the game says (no +1)");
+  // wowsims items: a quest green scores with its stats and weapon DPS
+  const rotor = mitems["90387"];
+  check(rotor && rotor.loc === "INVTYPE_WEAPON" && G.score(rotor, { ITEM_MOD_STRENGTH_SHORT: 1, ITEM_MOD_DAMAGE_PER_SECOND_SHORT: 1 }, "MainHand") > 165, "a wowsims item scores with its stats and weapon DPS");
+  check(G.LOC_SLOTS("INVTYPE_RANGEDRIGHT")[0] === "MainHand" && !G.BOTTOM.includes("Ranged"), "no ranged slot: a wand or gun is a main-hand item");
+  // armor specialization: from 50 a mage gains only from cloth
+  const leather = { loc: "INVTYPE_WAIST", cid: 4, sc: 2, stats: { ITEM_MOD_INTELLECT_SHORT: 60 } };
+  const cloth = { loc: "INVTYPE_WAIST", cid: 4, sc: 1, stats: { ITEM_MOD_INTELLECT_SHORT: 40 } };
+  check(G.wearable(cloth, "MAGE", 62) === true && G.wearable(leather, "MAGE", 62) === false && G.wearable({ loc: "INVTYPE_WAIST", cid: 4, sc: 4 }, "WARRIOR", 45) === true && G.wearable({ loc: "INVTYPE_WAIST", cid: 4, sc: 2 }, "WARRIOR", 55) === false,
+    "armor specialization from 50 (a level 45 warrior wears plate; at 55 not leather)");
+  check(G.wearable({ loc: "INVTYPE_WEAPON", cid: 2, sc: 13 }, "MONK", 20) === true && G.wearable({ loc: "INVTYPE_2HWEAPON", cid: 2, sc: 8 }, "DEATHKNIGHT", 60) === true, "Mists classes: monk fist weapons, death knight two-handers");
+  // the pick of a quest's rewards: the cloth upgrade, not the bigger leather one
+  const worn = { Waist: { loc: "INVTYPE_WAIST", cid: 4, sc: 1, stats: { ITEM_MOD_INTELLECT_SHORT: 10 } } };
+  const pick = G.bestChoice([leather, cloth], worn, fw.set.w, "MAGE", 62);
+  check(pick && pick.slot === "Waist" && pick.gain > 0 && pick.it === cloth, "the reward to pick: the cloth upgrade, not the leather");
+  G.setGame("forever");
+}
+
 console.log(fails ? `${fails} failed` : "all passed");
 process.exit(fails ? 1 : 0);

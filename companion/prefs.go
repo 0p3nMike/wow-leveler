@@ -67,7 +67,7 @@ func PrefsLua(p Prefs, known map[string]any) (string, error) {
 
 func (s *Server) readPrefs() Prefs {
 	p := Prefs{Skip: []string{}}
-	if v, err := s.paths.ReadLiteral("routes/custom/Prefs.lua", "ns.RoutePrefs ="); err == nil {
+	if v, err := s.P().ReadLiteral("routes/custom/Prefs.lua", "ns.RoutePrefs ="); err == nil {
 		if m, ok := v.(map[string]any); ok {
 			p.Goal, _ = m["goal"].(string)
 			p.At = int64(num(m["at"]))
@@ -83,7 +83,7 @@ func (s *Server) readPrefs() Prefs {
 	// the game's own choices when they are newer (Route.goal, Route.skips):
 	// ZugzugLevelerDB.goal/goalAt (asked in game) and skip/skipAt (its options panel)
 	skipAt := p.At
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	for a := range accts {
 		db, err := s.accountDB(a)
 		if err != nil {
@@ -108,7 +108,7 @@ func (s *Server) readPrefs() Prefs {
 
 // /api/prefs: GET -> {categories, goal, skip, custom}; POST {goal?, skip?, custom?} writes Prefs.lua.
 func (s *Server) prefs(w http.ResponseWriter, r *http.Request) {
-	catsAny, err := s.paths.ReadLiteral("Route.lua", "Route.CATEGORIES =")
+	catsAny, err := s.P().ReadLiteral("Route.lua", "Route.CATEGORIES =")
 	if err != nil {
 		writeJSON(w, nil, err)
 		return
@@ -144,7 +144,7 @@ func (s *Server) prefs(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, nil, err)
 			return
 		}
-		f := s.paths.prefsFile()
+		f := s.P().prefsFile()
 		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
 			writeJSON(w, nil, err)
 			return
@@ -159,6 +159,6 @@ func (s *Server) prefs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p := s.readPrefs()
-	goalSkip, _ := s.paths.ReadLiteral("Route.lua", "Route.GOAL_SKIP =")
+	goalSkip, _ := s.P().ReadLiteral("Route.lua", "Route.GOAL_SKIP =")
 	writeJSON(w, map[string]any{"categories": cats, "goal": p.Goal, "skip": p.Skip, "custom": p.Custom, "goalSkip": goalSkip}, nil)
 }

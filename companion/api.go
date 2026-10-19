@@ -20,11 +20,13 @@ import (
 )
 
 type Server struct {
-	paths   Paths
+	paths   Paths        // the game being shown: read with P() (games.go switches it)
+	pmu     sync.RWMutex // paths and chat
 	addr    string
 	wowhead *Wowhead
-	chat    *ChatLog
+	chat    *ChatLog // read with Chat()
 	backup  *Backups
+	kept    *Kept // last good copy of each part of a character's save
 	lan     *LAN
 	handler http.Handler // the guarded routes, for the phone listener
 	mu      sync.Mutex
@@ -38,10 +40,10 @@ type cached struct {
 }
 
 func NewServer(p Paths, addr string) *Server {
-	exes := gameExes(p.clientDir())
 	_, port, _ := net.SplitHostPort(addr)
-	return &Server{paths: p, addr: addr, wowhead: NewWowhead(), chat: NewChatLog(p.clientDir()), cache: map[string]cached{},
-		backup: NewBackups(func() bool { return anyRunning(exes) }), lan: NewLAN(port)}
+	s := &Server{paths: p, addr: addr, wowhead: NewWowhead(), chat: NewChatLog(p.clientDir()), cache: map[string]cached{}, lan: NewLAN(port), kept: NewKept()}
+	s.backup = NewBackups(func() bool { return anyRunning(gameExes(s.P().clientDir())) })
+	return s
 }
 
 // load parses a file once per modification.
@@ -61,7 +63,7 @@ func (s *Server) load(file string, parse func() (any, error)) (any, error) {
 }
 
 func (s *Server) accountDB(acct string) (map[string]any, error) {
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	f, ok := accts[acct]
 	if !ok {
 		return nil, fmt.Errorf("no account %q", acct)
@@ -73,12 +75,14 @@ func (s *Server) accountDB(acct string) (map[string]any, error) {
 	return v.(map[string]any), nil
 }
 
+// charDB: the character's save, with the parts a save left empty filled in
+// from the last good copy (kept.go).
 func (s *Server) charDB(c CharFile) (map[string]any, error) {
 	v, err := s.load(c.Path, func() (any, error) { return ReadSV(c.Path, "ZugzugLevelerCharDB") })
 	if err != nil {
 		return nil, err
 	}
-	return v.(map[string]any), nil
+	return s.kept.Merge(s.P().Client, c, v.(map[string]any), mtime(c.Path)), nil
 }
 
 func writeJSON(w http.ResponseWriter, v any, err error) {
@@ -117,7 +121,7 @@ func list(v any) []any {
 
 // /api/state: accounts, runs (summaries), characters, file times.
 func (s *Server) state(w http.ResponseWriter, r *http.Request) {
-	accts, chars := s.paths.Scan()
+	accts, chars := s.P().Scan()
 	var runs []map[string]any
 	names := make([]string, 0, len(accts))
 	for a := range accts {
@@ -165,13 +169,13 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, map[string]any{
-		"client": s.paths.Client, "addon": s.paths.AddonDir(), "accounts": names,
+		"client": s.P().Client, "addon": s.P().AddonDir(), "accounts": names, "expansion": s.expansion(),
 		"runs": runs, "chars": cs, "files": files, "now": time.Now().Unix(), "errors": errs,
 	}, nil)
 }
 
 func (s *Server) findChar(key string) (CharFile, bool) {
-	_, chars := s.paths.Scan()
+	_, chars := s.P().Scan()
 	for _, c := range chars {
 		if c.Key() == key {
 			return c, true
@@ -209,7 +213,7 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 func (s *Server) allRoutes() (map[string]map[string]any, []map[string]any) {
 	byName := map[string]map[string]any{}
 	var sums []map[string]any
-	for _, f := range s.paths.RouteFiles() {
+	for _, f := range s.P().RouteFiles() {
 		v, err := s.load(f, func() (any, error) {
 			b, err := readFile(f)
 			if err != nil {
@@ -225,12 +229,12 @@ func (s *Server) allRoutes() (map[string]map[string]any, []map[string]any) {
 			continue
 		}
 		name, _ := def["name"].(string)
-		rel, _ := filepath.Rel(s.paths.AddonDir(), f)
+		rel, _ := filepath.Rel(s.P().AddonDir(), f)
 		byName[name] = def
 		sums = append(sums, map[string]any{"name": name, "steps": len(list(def["steps"])),
 			"faction": def["faction"], "credit": def["credit"], "source": filepath.ToSlash(rel)})
 	}
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	for a := range accts {
 		db, err := s.accountDB(a)
 		if err != nil {
@@ -267,7 +271,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 
 // /api/maps: map bounds the addon recorded (all accounts).
 func (s *Server) maps(w http.ResponseWriter, r *http.Request) {
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	out := map[string]any{}
 	for a := range accts {
 		db, err := s.accountDB(a)
@@ -290,7 +294,7 @@ func (s *Server) maps(w http.ResponseWriter, r *http.Request) {
 // /api/npcs: NPC numbers the addon learned for the danger list's mobs
 // (Danger.lua: ns.db.npcIds[name] = id, when you target one), all accounts.
 func (s *Server) npcs(w http.ResponseWriter, r *http.Request) {
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	out := map[string]any{}
 	for a := range accts {
 		if db, err := s.accountDB(a); err == nil {
@@ -307,7 +311,7 @@ func (s *Server) npcs(w http.ResponseWriter, r *http.Request) {
 // /api/prices: auction house prices the addon read (Auction.lua), per
 // "Realm-Faction": {at, listings, items: {itemID: {p, n, q, name}}}.
 func (s *Server) prices(w http.ResponseWriter, r *http.Request) {
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	out := map[string]any{}
 	for a := range accts {
 		db, err := s.accountDB(a)
@@ -331,7 +335,7 @@ func (s *Server) prices(w http.ResponseWriter, r *http.Request) {
 // /api/loot: what dropped for the player, per creature (Loot.lua):
 // {npcID: {name, n (corpses looted), items: {itemID: {c, q, name}}}}, all accounts added up.
 func (s *Server) loot(w http.ResponseWriter, r *http.Request) {
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	out := map[string]map[string]any{}
 	for a := range accts {
 		db, err := s.accountDB(a)
@@ -377,7 +381,7 @@ func (s *Server) loot(w http.ResponseWriter, r *http.Request) {
 // (Export.lua E.questText): {questID: {title, desc, ask, npc, map, x, y, at}},
 // the newer read of the accounts.
 func (s *Server) questText(w http.ResponseWriter, r *http.Request) {
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	out := map[string]any{}
 	for a := range accts {
 		db, err := s.accountDB(a)
@@ -414,8 +418,8 @@ func byKey(v any) map[string]any {
 // /api/items: the items the game has shown (quest rewards, merchants), from
 // every account: { items: {id: item}, quests: {id: rewards}, vendors: {id: [seller]} }.
 func (s *Server) items(w http.ResponseWriter, r *http.Request) {
-	accts, _ := s.paths.Scan()
-	out := map[string]map[string]any{"items": {}, "quests": {}, "vendors": {}}
+	accts, _ := s.P().Scan()
+	out := map[string]map[string]any{"items": {}, "quests": {}, "vendors": {}, "nodes": {}} // nodes: gathering spots per map (Loot.lua L.node)
 	for a := range accts {
 		db, err := s.accountDB(a)
 		if err != nil {
@@ -432,15 +436,28 @@ func (s *Server) items(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) literal(rel, marker string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		f := filepath.Join(s.paths.AddonDir(), rel)
-		v, err := s.load(f, func() (any, error) { return s.paths.ReadLiteral(rel, marker) })
+		f := filepath.Join(s.P().AddonDir(), rel)
+		v, err := s.load(f, func() (any, error) { return s.P().ReadLiteral(rel, marker) })
 		writeJSON(w, v, err)
+	}
+}
+
+// classicOnly: data for the 1-60 world (the classic profession plan, RestedXP's
+// dangerous mobs), which the addon loads on Forever only (TOC [AllowLoadGameType
+// camelot]); a later expansion's game gets {} (the page shows nothing).
+func (s *Server) classicOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.expansion() > 1 {
+			writeJSON(w, map[string]any{}, nil)
+			return
+		}
+		next(w, r)
 	}
 }
 
 // /api/version: changes whenever any file the page shows changes.
 func (s *Server) version(w http.ResponseWriter, r *http.Request) {
-	accts, chars := s.paths.Scan()
+	accts, chars := s.P().Scan()
 	var latest int64
 	for _, f := range accts {
 		latest = max(latest, mtime(f).UnixNano())
@@ -448,7 +465,7 @@ func (s *Server) version(w http.ResponseWriter, r *http.Request) {
 	for _, c := range chars {
 		latest = max(latest, mtime(c.Path).UnixNano())
 	}
-	for _, f := range s.paths.RouteFiles() {
+	for _, f := range s.P().RouteFiles() {
 		latest = max(latest, mtime(f).UnixNano())
 	}
 	writeJSON(w, map[string]any{"version": strconv.FormatInt(latest, 10)}, nil)
@@ -479,7 +496,7 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"error": err.Error()}, nil)
 		return
 	}
-	f, err := s.paths.WritePlanner(content)
+	f, err := s.P().WritePlanner(content)
 	writeJSON(w, map[string]any{"file": f, "steps": len(body.Steps)}, err)
 }
 
@@ -515,14 +532,16 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/route", s.route)
 	mux.HandleFunc("/api/maps", s.maps)
 	mux.HandleFunc("/api/items", s.items)
-	mux.HandleFunc("/api/prof", s.literal("data/Professions.lua", "ns.ProfData ="))
-	mux.HandleFunc("/api/danger", s.literal("data/Danger.lua", "ns.DangerData ="))
+	mux.HandleFunc("/api/prof", s.classicOnly(s.literal("data/Professions.lua", "ns.ProfData =")))
+	mux.HandleFunc("/api/danger", s.classicOnly(s.literal("data/Danger.lua", "ns.DangerData =")))
 	mux.HandleFunc("/api/version", s.version)
 	mux.HandleFunc("/api/plan", s.plan)
 	mux.HandleFunc("/api/themes", s.themes)
 	mux.HandleFunc("/api/looks", s.gate(s.wowhead.looks))
 	mux.HandleFunc("/api/mapart", s.gate(s.wowhead.mapArt))
-	mux.HandleFunc("/api/live", s.chat.serve)
+	mux.HandleFunc("/api/live", func(w http.ResponseWriter, r *http.Request) { s.Chat().serve(w, r) })
+	mux.HandleFunc("/api/games", s.games)
+	mux.HandleFunc("/api/game", s.game)
 	mux.HandleFunc("/api/backups", s.backups)
 	mux.HandleFunc("/api/lan", s.lanAPI)
 	mux.HandleFunc("/api/ask", s.ask)
@@ -536,7 +555,7 @@ func (s *Server) Routes(static http.Handler) http.Handler {
 	mux.HandleFunc("/api/voice/line", s.voiceLine)
 	mux.HandleFunc("/api/settings", s.settings)
 	mux.HandleFunc("/api/quests", s.gate(s.wowhead.quests))
-	mux.HandleFunc("/api/questdb", s.literal("data/Quests.lua", "ns.QuestDB ="))
+	mux.HandleFunc("/api/questdb", func(w http.ResponseWriter, r *http.Request) { s.literal(s.questFile())(w, r) })
 	mux.HandleFunc("/localfont/", serveLocalFont(fontDir()))
 	mux.HandleFunc("/wh/", s.gate(s.wowhead.files))
 	// The page's files are embedded (no modification time to revalidate

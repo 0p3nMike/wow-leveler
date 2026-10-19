@@ -1,6 +1,6 @@
 """refresh.py -- regenerate every route and the quest data from pinned sources.
 
-    python -I tools/refresh.py --rxp <RXPGuides clone> --att <AllTheThings clone> [--check] [--pin]
+    python -I tools/refresh.py --rxp <RXPGuides clone> --att <AllTheThings clone> [--wowsims <wowsims/mop clone>] [--check] [--pin]
 
 RestedXP's guides and AllTheThings change weekly. This is the one command that
 rebuilds everything the addon ships from them, at the commits in
@@ -11,7 +11,12 @@ count moved:
     talent guides (data/Talents.lua) through tools/rxptalents.py
     (RestedXP Guides, CC BY-NC-SA 4.0: personal, non-commercial; credit RestedXP);
   * data/Quests.lua and companion/web/data/npcloot.json, through
-    tools/att2quests.lua (AllTheThings, MIT).
+    tools/att2quests.lua (AllTheThings, MIT);
+  * Mists of Pandaria Classic: data/Quests_Mists.lua (att2quests.lua on db/Mists,
+    run with lua 5.4+: its Zones.lua is too big for luajit), and with --wowsims
+    the Gear tab's MoP items, weights and rating table (tools/mop_gear.py) and the
+    talent builds (tools/mop_talents.py), from wowsims/mop (MIT). Not compared
+    in --check mode.
 
 --check   write into a scratch folder and compare with what is in the repo;
           nothing in the repo changes. Use it to see that the pinned commits
@@ -58,6 +63,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--rxp", required=True, help="a clone of https://github.com/RestedXP/RXPGuides")
     ap.add_argument("--att", help="a clone of https://github.com/ATTWoWAddon/AllTheThings (quest data; skipped if not given)")
+    ap.add_argument("--wowsims", help="a clone of https://github.com/wowsims/mop (MoP gear and talents; skipped if not given)")
     ap.add_argument("--check", action="store_true", help="write to a scratch folder and compare; change nothing")
     ap.add_argument("--pin", action="store_true", help="check out the pinned commits first")
     ap.add_argument("--only", help="regenerate only routes whose name contains this text")
@@ -101,6 +107,12 @@ def main(argv=None):
         dest = {k: (os.path.join(out, k) if a.check else v) for k, v in data.items()}
         run(["luajit", os.path.join(ROOT, "tools", "att2quests.lua"), os.path.join(a.att, "db", "Camelot", "Categories"),
              pins["att"], dest["Quests.lua"], dest["npcloot.json"]], cwd=ROOT)
+    if a.att and not a.check:
+        run(["lua", os.path.join(ROOT, "tools", "att2quests.lua"), os.path.join(a.att, "db", "Mists", "Categories"),
+             pins["att"], os.path.join(ADDON, "data", "Quests_Mists.lua"), "-"], cwd=ROOT)
+    if a.wowsims and not a.check:
+        run([sys.executable, "-I", os.path.join(ROOT, "tools", "mop_gear.py"), a.wowsims, a.rxp])
+        run([sys.executable, "-I", os.path.join(ROOT, "tools", "mop_talents.py"), a.wowsims])
 
     # the report: step counts, and in --check mode which files differ
     changed = 0

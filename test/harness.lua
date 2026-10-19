@@ -1,13 +1,20 @@
 -- harness.lua -- run the REAL addon files under Lua 5.1 / luajit against a
 -- fake Forever API, drive game events, and check what the addon does.
 --
---   luajit test/harness.lua <path to ZugzugLeveler/>
+--   luajit test/harness.lua <path to ZugzugLeveler/> [SavedVariables dump | -] [camelot | mists]
+--
+-- The 3rd argument is the game type the TOC's [AllowLoadGameType ...] tags are
+-- read for: camelot (Forever, the default, every test) or mists (Mists of
+-- Pandaria Classic: the fake API is reshaped to 5.5.4's and only the Mists
+-- tests run; they stop before the Forever ones).
 --
 -- Same idea as ghoul's addon/test/harness.lua: in game every handler runs
 -- inside pcall (Events.lua), so a typo never errors there -- it just quietly
 -- does nothing. Here the bus's error print is turned into a failure.
 
-local dir = assert(arg[1], "usage: harness.lua <addon dir>")
+local dir = assert(arg[1], "usage: harness.lua <addon dir> [dump | -] [camelot | mists]")
+local GAME = arg[3] or "camelot"
+if arg[2] == "-" then arg[2] = nil end
 
 -- ------------------------------------------------------------ fake world
 local W = {
@@ -194,6 +201,39 @@ C_Container = {
   UseContainerItem = function(b, s) called("UseContainerItem", b, s) end,
 }
 
+-- ------------------------------------------- Mists of Pandaria Classic API
+-- The same fake world through 5.5.4's API (Ketho's classic GlobalAPI.lua and
+-- Gethe/wow-ui-source branch classic): the old quest log globals instead of
+-- most of C_QuestLog, no C_QuestLine / C_TooltipInfo / C_PaperDollInfo /
+-- C_TradeSkillUI / C_SkillInfo / C_Minimap, no user waypoints.
+if GAME == "mists" then
+  local HEADER = "Twilight Highlands"
+  local function row(i) if i == 1 then return nil end return logList()[i - 1] end -- row 1 is a zone header
+  C_QuestLog = {
+    IsOnQuest = C_QuestLog.IsOnQuest, IsQuestFlaggedCompleted = C_QuestLog.IsQuestFlaggedCompleted,
+    GetQuestObjectives = C_QuestLog.GetQuestObjectives, GetQuestsOnMap = C_QuestLog.GetQuestsOnMap,
+    GetQuestInfo = function(q) return (W.log[q] and W.log[q].title) or (W.names or {})[q] end,
+  }
+  function GetNumQuestLogEntries() return #logList() + 1 end
+  -- title, level, questTag, isHeader, isCollapsed, isComplete, frequency, questID (Cata QuestLogFrame.lua:232)
+  function GetQuestLogTitle(i)
+    if i == 1 then return HEADER, 0, nil, true, false, nil, 0, 0 end
+    local q = row(i)
+    if q then return W.log[q].title, 84, nil, false, false, W.log[q].complete and 1 or nil, 0, q end
+  end
+  function IsQuestComplete(q) return W.log[q] ~= nil and W.log[q].complete end
+  function GetQuestLogIndexByID(q) for i, x in ipairs(logList()) do if x == q then return i + 1 end end return 0 end
+  function GetQuestsCompleted() local t = {} for q in pairs(W.turnedIn) do t[q] = true end return t end
+  W.sel = 0
+  function GetQuestLogSelection() return W.sel end
+  function SelectQuestLogEntry(i) W.sel = i end
+  function GetQuestLogQuestText(i) assert(i == nil, "Mists' GetQuestLogQuestText takes no index"); local q = row(W.sel); return q and ("about " .. q), q and ("do " .. q) end
+  C_QuestLine, C_TooltipInfo, C_PaperDollInfo, C_TradeSkillUI, C_SkillInfo, C_Minimap = nil, nil, nil, nil, nil, nil
+  C_GameRules = { IsHardcoreActive = function() return false end }
+  C_SuperTrack = {}
+  C_Map.CanSetUserWaypointOnMap, C_Map.SetUserWaypoint, C_Map.GetUserWaypoint, C_Map.ClearUserWaypoint = nil, nil, nil, nil
+end
+
 -- ------------------------------------------------------------ load addon
 local ns = {}
 local toc = assert(io.open(dir .. "/ZugzugLeveler.toc"))
@@ -213,7 +253,10 @@ local function load(rel)
 end
 for line in toc:lines() do
   line = line:gsub("\r", "")
-  if line ~= "" and not line:match("^##") then load(line) end
+  local file, games = line:match("^(.-)%s*%[AllowLoadGameType%s+([^%]]*)%]%s*$")
+  local wanted = not games
+  for g in (games or ""):gmatch("[^,%s]+") do if g == GAME then wanted = true end end
+  if line ~= "" and not line:match("^#") and wanted then load(file or line) end
 end
 toc:close()
 -- The real quest data (AllTheThings') knows quest numbers these tests make up
@@ -258,6 +301,290 @@ check(ZugzugLevelerCharDB.char and ZugzugLevelerCharDB.char.name == "Tester" and
 check(ZugzugLevelerDB.chatStrings and ZugzugLevelerDB.chatStrings.s.ERR_QUEST_ACCEPTED_S == "Quest accepted: %s" and ZugzugLevelerDB.chatStrings.locale == "deDE",
   "the client's own chat strings are saved for the companion")
 local zug = SlashCmdList.ZUGZUGLEVELER
+
+local function finish()
+  local err = errorsPrinted()
+  check(not err, "no handler errors (" .. tostring(err) .. ")")
+  io.write(string.format("%d passed, %d failed\n", passed, failures))
+  os.exit(failures == 0 and 0 or 1)
+end
+
+-- ======================================== Mists of Pandaria Classic (mists)
+if GAME == "mists" then
+  local C = ns.C
+  local n = 0
+  for _ in pairs(ns.QuestDBMists or {}) do n = n + 1 end
+  check(n > 10000, "Mists quest data loaded (" .. n .. " quests), not Forever's")
+  local names = {}
+  for _, r in ipairs(ns.Route.List()) do if not ns.Route.Get(r.name).dynamic then names[#names + 1] = r.name end end
+  check(#names == 0, "no Forever routes on Mists, only the self-building ones (quest log, farm): " .. table.concat(names, ","))
+  check(ns.TalentData == nil and ns.ProfData == nil, "Forever's talent and profession plans are not loaded")
+  check(ZugzugLevelerCharDB.offeredRoute and not ZugzugLevelerDB.goalAsked, "first run: quest log mode offered, no guide goal asked")
+
+  -- What happened in the real Mists client (2026-10-18): the TOC's
+  -- [AllowLoadGameType camelot] lines loaded anyway. With every Forever file
+  -- loaded, the addon must still use none of it.
+  for _, f in ipairs({ "data/Quests.lua", "data/Talents.lua", "data/Danger.lua", "data/Professions.lua", "routes/rxp/routes.xml" }) do load(f) end
+  names = {}
+  for _, r in ipairs(ns.Route.List()) do if not ns.Route.Get(r.name).dynamic then names[#names + 1] = r.name end end
+  check(#names == 0, "Forever's route files loaded on Mists register nothing (" .. #names .. " routes)")
+  check(ns.QInfo.db() == ns.QuestDBMists and ns.QuestDB ~= ns.QuestDBMists, "Mists reads its own quest data with Forever's loaded too")
+  check(next(ns.Talents.guides()) == nil, "no Forever talent guide on Mists")
+  -- a character a Forever route was given before this: offered quest log mode again
+  ZugzugLevelerCharDB.route, ZugzugLevelerCharDB.offeredRoute = "RXP Undead Mage", true
+  fire("PLAYER_ENTERING_WORLD")
+  check(ZugzugLevelerCharDB.route == nil or ZugzugLevelerCharDB.route == ns.QuestLog.NAME, "a route that is not here is dropped")
+  check(ZugzugLevelerCharDB.offeredRoute == true, "and quest log mode is offered again")
+
+  -- the quest log through the old globals
+  W.level, W.faction, W.map, W.x, W.y = 84, "Horde", 241, 0.5, 0.5
+  accept(201, "Fire in the Skies"); accept(202, "Bird Down"); finishObj(202)
+  check(table.concat(C.questLogIDs(), ",") == "201,202", "log quest IDs from GetQuestLogTitle, the header skipped")
+  check(C.isComplete(202) and not C.isComplete(201), "complete from IsQuestComplete")
+  check(C.questTitle(201) == "Fire in the Skies", "title from the log row (GetQuestLogIndexByID)")
+  W.names = { [999] = "Not In Log" }
+  check(C.questTitle(999) == "Not In Log", "title of a quest not in the log from C_QuestLog.GetQuestInfo")
+  W.turnedIn[300] = true
+  local set = C.completedSet()
+  check(set and set[300] and not set[201], "turned-in quests from GetQuestsCompleted")
+  W.sel = 1
+  fire("QUEST_LOG_UPDATE")
+  local log = ZugzugLevelerCharDB.questLog
+  check(log and #log == 2 and log[1].zone == "Twilight Highlands" and log[1].level == 84 and log[2].done == true,
+    "the page's quest log: zone from the header row, level, done")
+  check(log and log[1].desc == "about 201" and log[2].ask == "do 202", "each quest's own words, read by selecting its row")
+  check(W.sel == 1, "the quest log's selection is put back")
+
+  -- quest log mode: quest givers from the data (no C_QuestLine)
+  zug("questlog")
+  local acc, ok = 0, true
+  for _, s in ipairs(ns.QuestLog.collect()) do
+    if s.act == "accept" then
+      acc = acc + 1
+      if s.map ~= 241 or ns.QInfo.blocked(s.q) or not s.title then ok = false end
+    end
+  end
+  check(acc > 0 and ok, "quest givers on Twilight Highlands from the quest data, all takeable now (" .. acc .. ")")
+  local levels = { [1] = { 1, 10 }, [461] = { 1, 5 }, [201] = { 80, 81 } } -- Durotar, Valley of Trials, Kelp'thar Forest
+  C_Map.GetMapLevels = function(m) local l = levels[m]; if l then return l[1], l[2] end end
+  -- Hellfire Peninsula (map 100), Michael's case, 2026-10-18, with the real Mists data:
+  -- "Report to Nazgrel" (10875) is a breadcrumb to 10876 (nextQuests); "Weaken the
+  -- Ramparts" (9572) is a Hellfire Ramparts dungeon quest (ATT: Instances only)
+  do
+    local oldMap, oldLvl, oldTurned = W.map, W.level, W.turnedIn
+    W.map, W.level = 100, 60
+    W.turnedIn = { [10838] = true, [10124] = true }
+    local function offered()
+      local t = {}
+      for _, s in ipairs(ns.QuestLog.collect()) do if s.act == "accept" then t[s.q] = true end end
+      return t
+    end
+    local before = offered()
+    check(before[10875], "the breadcrumb is offered while its follow-up is not done")
+    W.turnedIn[10876] = true
+    local after = offered()
+    check(not after[10875] and ns.QInfo.blocked(10875) and ns.QInfo.blocked(10875).why == "past",
+      "a breadcrumb whose follow-up you did is not offered (" .. tostring(ns.QInfo.say(ns.QInfo.blocked(10875))) .. ")")
+    check(not after[9572], "a dungeon quest is not offered on your own")
+    IsInGroup = function() return true end
+    check(offered()[9572], "in a group it is")
+    IsInGroup = nil
+    W.log[9572] = { complete = false, title = "Weaken the Ramparts", objs = {} }
+    W.poi = { [100] = { { questID = 9572, x = 0.47, y = 0.52 } } }
+    local into = false
+    for _, s in ipairs(ns.QuestLog.collect()) do if s.q == 9572 then into = true end end
+    check(not into and ns.QuestLog.dungeon[1] == 9572, "a dungeon quest in your log: not routed into the dungeon on your own, listed instead")
+    W.log[9572], W.poi = nil, nil
+    W.map, W.level, W.turnedIn = oldMap, oldLvl, oldTurned
+  end
+  W.map = 1
+  local grey = 0
+  for _, s in ipairs(ns.QuestLog.collect()) do if s.act == "accept" then grey = grey + 1 end end
+  check(grey == 0, "no quest givers in a zone you have outlevelled (" .. grey .. ")")
+  W.map = 241
+
+  -- gear: GetInventorySlotInfo, GetItemStats, a hidden tooltip read back
+  local slotIDs = { HeadSlot = 1, MainHandSlot = 16 }
+  function GetInventorySlotInfo(name) return slotIDs[name] or 99, "", false end
+  function GetInventoryItemLink(_, slot) if slot == 16 then return "|Hitem:2::|h" end end
+  function GetInventoryItemDurability() return 30, 35 end
+  function GetItemStats() return { ITEM_MOD_INTELLECT_SHORT = 40 } end
+  C_Item.GetItemInfoInstant = function(link) return tonumber(tostring(link):match("item:(%d+)")) end
+  local make = CreateFrame
+  function CreateFrame(kind, name, ...)
+    local f = make(kind, name, ...)
+    if kind == "GameTooltip" then
+      local rows = {}
+      local function fs(t) return { GetText = function() return t end, GetTextColor = function() return 1, 1, 1 end, IsShown = function() return t ~= nil end } end
+      rawset(f, "SetHyperlink", function() rows = { { "Frostfire Staff" }, { "Two-Hand", "Staff" } } end)
+      rawset(f, "NumLines", function() for i, r in ipairs(rows) do _G[name .. "TextLeft" .. i], _G[name .. "TextRight" .. i] = fs(r[1]), fs(r[2]) end return #rows end)
+    end
+    return f
+  end
+  -- transmog: the main hand wears another staff's look
+  C_Transmog = { GetSlotVisualInfo = function(loc)
+    assert(loc.type == 0 and loc.modification == 0, "appearance, main")
+    if loc.slotID == 16 then return { baseSourceID = 11, appliedSourceID = 77, isHideVisual = false } end
+    return { baseSourceID = 12, appliedSourceID = 0, isHideVisual = false }
+  end }
+  C_TransmogCollection = { GetSourceInfo = function(src) if src == 77 then return { itemID = 5000, name = "Staff of Looks" } end end }
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  local mh = ZugzugLevelerCharDB.gear and ZugzugLevelerCharDB.gear.slots.MainHand
+  check(mh and mh.tmog and mh.tmog.id == 5000 and mh.tmog.name == "Staff of Looks", "a transmogged slot saves the look it wears")
+  -- outfits (C_TransmogOutfitInfo), read when the transmog window opens
+  C_Transmog.IsAtTransmogNPC = function() return true end
+  C_TransmogOutfitInfo = {
+    GetTransmogOutfitSlotFromInventorySlot = function(inv) return ({ [0] = 0, [15] = 12 })[inv] end, -- head, main hand
+    GetEquippedSlotOptionFromTransmogSlot = function(ts) return ts == 12 and 2 or 0 end,
+    GetViewedOutfitSlotInfo = function(ts, kind, opt)
+      assert(kind == 0, "appearance")
+      if ts == 0 then return { displayType = 1, transmogID = 88 } end
+      if ts == 12 and opt == 2 then return { displayType = 3, transmogID = 0 } end
+    end,
+    GetActiveOutfitID = function() return 1 end, GetCurrentlyViewedOutfitID = function() return 1 end,
+  }
+  C_TransmogCollection.GetSourceItemID = function(src) return src == 88 and 6000 or nil end
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 5) -- a merchant: not read
+  check(ZugzugLevelerCharDB.tmog == nil, "another interaction window does not read the transmog")
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 24) -- the Transmogrifier, Mists' outfit window
+  local tm = ZugzugLevelerCharDB.tmog
+  check(tm and tm.slots.Head and tm.slots.Head.id == 6000 and tm.slots.MainHand and tm.slots.MainHand.hidden,
+    "at the transmogrifier: each slot's outfit look saved (an item, or hidden)")
+  zug("tmog")
+  check(W.printed[#W.printed]:find("MainHand", 1, true) or W.printed[#W.printed]:find("Ranged", 1, true), "/zug tmog reports each slot")
+  C_TransmogOutfitInfo = nil
+  check(mh and mh.stats.ITEM_MOD_INTELLECT_SHORT == 40 and mh.dur == 30, "equipped item by slot name, stats from GetItemStats")
+  check(mh and #mh.tt == 2 and mh.tt[2] == "ffffff\tTwo-Hand\tffffff\tStaff", "tooltip read from a hidden GameTooltip")
+
+  -- spec names when the spec call answers without them (Mists at login)
+  C_SpecializationInfo = {
+    GetSpecialization = function() return 3 end,
+    GetNumSpecializationsForClassID = function() return 3 end,
+    GetSpecializationInfo = function(i) return 61 + i end, -- no name yet
+  }
+  function GetSpecializationInfoForClassID(_, i) return 61 + i, ({ "Arcane", "Fire", "Frost" })[i], "", 0, "DAMAGER" end
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  local sp = ZugzugLevelerCharDB.gear and ZugzugLevelerCharDB.gear.spec
+  check(sp and sp.cur == 3 and sp.trees[3].name == "Frost" and sp.trees[3].id == 64, "spec names from GetSpecializationInfoForClassID when the spec call has none")
+  C_SpecializationInfo, GetSpecializationInfoForClassID = nil, nil
+
+  -- talents: wowsims' Frost build (311122) against the tiers picked; level 62, the 60 tier open
+  do
+    W.level = 62
+    C_SpecializationInfo = { GetSpecialization = function() return 3 end, GetActiveSpecGroup = function() return 1 end,
+      GetNumSpecializationsForClassID = function() return 3 end,
+      GetSpecializationInfo = function(i) return 61 + i, ({ "Arcane", "Fire", "Frost" })[i] end }
+    local picked = { 3, 1, 1, 0, 0, 0 }
+    function GetTalentTierInfo(tier) local lv = ({ 15, 30, 45, 60, 75, 90 })[tier]; return W.level >= lv, picked[tier], lv end
+    function GetNumGlyphSockets() return 6 end
+    function GetGlyphSocketInfo(i) if i == 1 then return true, 1, 1, 56377 end return true, 1, 1, nil end -- Splitting Ice slotted
+    UnitClass = function() return "Mage", "MAGE", 8 end
+    local list, b = ns.Talents.pending()
+    check(b and b.spec == "Frost" and b.name == "Default" and #list == 1 and list[1].name == "Greater Invisibility" and list[1].lvl == 60,
+      "Mists talents: the Frost build's pick for the open level-60 tier (" .. tostring(list[1] and list[1].name) .. ")")
+    check((ns.Talents.line() or ""):find("Greater Invisibility", 1, true), "the window says which talent to pick")
+    local miss = ns.Talents.mistsGlyphs(b)
+    local names = {}
+    for _, g in ipairs(miss) do names[g.name] = true end
+    check(not names["Glyph of Splitting Ice"] and names["Glyph of Icy Veins"], "glyphs you lack from the build (Splitting Ice slotted, Icy Veins not)")
+    zug("talents"); zug("talents list")
+    fire("PLAYER_EQUIPMENT_CHANGED")
+    local sp = ZugzugLevelerCharDB.gear.spec
+    check(sp.tiers and sp.tiers[1] == 3 and sp.tiers[4] == 0 and sp.glyphs[1] == 56377, "the page gets your tier picks and glyphs")
+    -- ratings: the client's CR_* numbers, rating and percent as the character frame works them out
+    CR_HIT_SPELL, CR_CRIT_SPELL, CR_HASTE_SPELL, CR_MASTERY = 8, 11, 20, 26
+    function GetCombatRating(cr) return ({ [8] = 43, [11] = 180, [20] = 86, [26] = 120 })[cr] or 0 end
+    function GetCombatRatingBonus(cr) return ({ [8] = 4.98 })[cr] or 0 end
+    function GetSpellHitModifier() return 1 end
+    function GetSpellCritChance(school) return school == 5 and 14.2 or 12 end
+    function UnitSpellHaste() return 7.97 end
+    function GetMasteryEffect() return 19.6 end
+    fire("PLAYER_EQUIPMENT_CHANGED")
+    local r = ZugzugLevelerCharDB.gear.stats.r
+    check(r and r.hit[1] == 43 and math.abs(r.hit[2] - 5.98) < 1e-9 and r.crit[2] == 14.2 and r.haste[2] == 7.97 and r.mastery[1] == 120,
+      "ratings and percentages saved (spell hit = rating bonus + modifier, best school's crit)")
+    CR_HIT_SPELL, CR_CRIT_SPELL, CR_HASTE_SPELL, CR_MASTERY = nil, nil, nil, nil
+    GetCombatRating, GetCombatRatingBonus, GetSpellHitModifier, GetSpellCritChance, UnitSpellHaste, GetMasteryEffect = nil, nil, nil, nil, nil, nil
+    C_SpecializationInfo, GetTalentTierInfo, GetNumGlyphSockets, GetGlyphSocketInfo = nil, nil, nil, nil
+    UnitClass = function() return "Warrior", "WARRIOR", 1 end
+  end
+
+  -- reward items of quests you can take, looked up in the game (one answers later)
+  do
+    ns.QuestDBMists[777001] = { at = { 100, 0.5, 0.5 }, rw = { 31717, 99999 } }
+    ZugzugLevelerCharDB.avail = { 777001 }
+    local cachedNow, oldInfo, oldEquip = {}, C_Item.GetItemInfo, C_Item.IsEquippableItem
+    C_Item.GetItemInfo = function(x)
+      local id = tonumber(x) or tonumber(tostring(x):match("item:(%d+)"))
+      if not cachedNow[id] then return nil end
+      return id == 31717 and "Fel-Tooth Robe" or "Bandage", "|Hitem:" .. id .. "::|h", 2, 115, 60, "Armor", "Cloth", 1, "INVTYPE_ROBE", 0, 500, 4, 1, 1
+    end
+    C_Item.IsEquippableItem = function(link) return tostring(link):find("31717") ~= nil end
+    ns.Export.lookupRewards()
+    check(not (ZugzugLevelerDB.items or {})[31717], "a reward the client does not have yet waits for the server")
+    cachedNow[31717], cachedNow[99999] = true, true
+    fire("GET_ITEM_INFO_RECEIVED", 31717, true)
+    fire("GET_ITEM_INFO_RECEIVED", 99999, true)
+    local got = (ZugzugLevelerDB.items or {})[31717]
+    check(got and got.name == "Fel-Tooth Robe" and got.req == 60 and not ZugzugLevelerDB.items[99999],
+      "the server's answer is remembered with the game's stats and required level; non-gear is not")
+    C_Item.GetItemInfo, C_Item.IsEquippableItem = oldInfo, oldEquip
+    ns.QuestDBMists[777001], ZugzugLevelerCharDB.avail = nil, nil
+  end
+
+  -- skills and the trade skill window, old style
+  local lines = { { "Weapon Skills", true }, { "Staves", false, false, 400, 0, 0, 450 } }
+  function GetNumSkillLines() return #lines end
+  function GetSkillLineInfo(i) return unpack(lines[i]) end
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  local sk = ZugzugLevelerCharDB.gear and ZugzugLevelerCharDB.gear.skills
+  check(sk and #sk == 1 and sk[1].name == "Staves" and sk[1].rank == 400 and sk[1].max == 450 and sk[1].head == "Weapon Skills", "skills from GetSkillLineInfo")
+  local recipes = { { "Tailoring", "header" }, { "Bolt of Embersilk", "optimal", 3 }, { "Spare", "trivial", 9 }, { "Cloak", "medium", 1 } }
+  function GetNumTradeSkills() return #recipes end
+  function GetTradeSkillInfo(i) return unpack(recipes[i]) end
+  function GetTradeSkillLine() return "Tailoring", 437, 450 end
+  function GetTradeSkillNumReagents(i) return i == 2 and 1 or 0 end
+  function GetTradeSkillReagentInfo(_, r) if r == 1 then return "Embersilk Cloth", 0, 5, 12 end end
+  function GetTradeSkillReagentItemLink() return "|Hitem:53010::|h" end
+  function GetTradeSkillItemLink(i) return "|Hitem:" .. (53640 + i) .. "::|h" end
+  ns.Prof.scanWindow()
+  check(#ns.Prof.canSkill == 2 and ns.Prof.canSkill[1].name == "Bolt of Embersilk" and ns.Prof.canSkill[1].orange, "skill-up recipes from GetTradeSkillInfo")
+  local pr = ZugzugLevelerCharDB.profRecipes and ZugzugLevelerCharDB.profRecipes.Tailoring
+  check(pr and pr.rank == 437 and #pr.recipes == 2 and pr.recipes[1].mats[1].id == 53010 and pr.recipes[1].mats[1].need == 5 and pr.recipes[1].mats[1].have == 12,
+    "the planner's recipes saved with materials, need and have (trivial ones left out)")
+  ZugzugLevelerCharDB.profRecipes = nil
+  fire("TRADE_SKILL_UPDATE") -- Mists fills the list on this event, after TRADE_SKILL_SHOW
+  check(ZugzugLevelerCharDB.profRecipes and ZugzugLevelerCharDB.profRecipes.Tailoring, "recipes read on Mists' TRADE_SKILL_UPDATE")
+
+  -- gathering: a node looted (its GUID a GameObject) is recorded where you stand; the same spot again counts up
+  do
+    W.map, W.x, W.y = 241, 0.40, 0.50
+    local loot = { { "|Hitem:72092::|h", "Ghost Iron Ore", 3, "GameObject-0-1-0-0-209311-0000AAAA01" } }
+    function GetNumLootItems() return #loot end
+    function GetLootSlotInfo(s) return 0, loot[s][2], loot[s][3] end
+    function GetLootSlotLink(s) return loot[s][1] end
+    function GetLootSourceInfo(s) return loot[s][4], loot[s][3] end
+    fire("LOOT_OPENED")
+    loot[1][4] = "GameObject-0-1-0-0-209311-0000AAAA02"; W.x = 0.401
+    fire("LOOT_OPENED")
+    loot[1] = { "|Hitem:72234::|h", "Green Tea Leaf", 2, "GameObject-0-1-0-0-209349-0000BBBB01" }; W.x, W.y = 0.60, 0.20
+    fire("LOOT_OPENED")
+    local nodes = ZugzugLevelerDB.nodes and ZugzugLevelerDB.nodes[241]
+    check(nodes and #nodes == 2 and nodes[1].n == 2 and nodes[1].items[72092].q == 6 and nodes[1].items[72092].name == "Ghost Iron Ore",
+      "gathering nodes recorded per map, the same spot counted again")
+    local before = ZugzugLevelerCharDB.route
+    zug("farm ore")
+    check(ZugzugLevelerCharDB.route == "Farm" and #ns.Engine.route().steps == 1 and ns.Engine.route().steps[1].text == "Gather ore", "/zug farm ore: a route through the ore nodes")
+    zug("farm")
+    check(#ns.Engine.route().steps == 2, "/zug farm: every node on the map")
+    zug("farm off")
+    check(ZugzugLevelerCharDB.route == before, "/zug farm off: back to " .. tostring(before))
+    GetNumLootItems, GetLootSlotInfo, GetLootSlotLink, GetLootSourceInfo = nil, nil, nil, nil
+  end
+
+  zug("why"); zug("way 50 50"); tick(4)
+  finish()
+end
 
 -- XP math
 check(ns.XP.delta({ xp = 900, max = 1000, lvl = 5 }, 50, 1200, 6) == 150, "level-up delta = rest of old bar + new")
@@ -913,6 +1240,22 @@ do
   for k, p in ipairs(W.printed) do if p:find("error in SL_TEST_BOOM", 1, true) then W.printed[k] = "(expected test error)" end end
 end
 
+-- your look, read at a barber (C_BarberShop)
+do
+  C_BarberShop = { GetAvailableCustomizations = function() return {
+    { id = 1, options = {
+      { id = 10, name = "Skin Color", currentChoiceIndex = 2, choices = { { id = 100, name = "1" }, { id = 101, name = "2" } } },
+      { id = 11, name = "Face", currentChoiceIndex = 1, choices = { { id = 110, name = "1" } } },
+    } },
+    { id = 2, spellShapeshiftFormID = 768, options = { { id = 20, currentChoiceIndex = 1, choices = { { id = 200 } } } } },
+  } end }
+  fire("BARBER_SHOP_OPEN")
+  local look = ZugzugLevelerCharDB.look
+  check(look and #look.options == 2 and look.options[1].o == 10 and look.options[1].c == 101 and look.options[2].c == 110,
+    "a barber's chair: every feature's current choice saved (forms left out)")
+  C_BarberShop = nil
+end
+
 -- loot you saw: per creature, each corpse once
 do
   local slots = {
@@ -955,9 +1298,9 @@ do
   check(g and g.name == "Arms 10-30", "not hardcore: the plain guide: " .. tostring(g and g.name))
   check(#list == 2 and list[1].rank == 3 and list[2].name == "Talent 21", "pending: what you lack up to your level, not later picks")
   check(ns.Talents.line():find("Talent 12 3", 1, true) and ns.Talents.line():find("+1 more", 1, true), "the window line")
-  C_GameRules = { IsHardcoreActive = function() return true end }
+  C_GameRules = { IsHardcoreActive = function() return true end, GetForeverExperiencePreset = function() return 1 end }
   check(select(2, ns.Talents.pending()).name == "Arms (Survival) 10-30", "a hardcore character gets the Survival guide")
-  C_GameRules = nil
+  C_GameRules = { GetForeverExperiencePreset = function() return 1 end } -- Forever, not hardcore
   zug("talents Arms (Survival) 10-30")
   check(ZugzugLevelerCharDB.talentGuide == "Arms (Survival) 10-30" and select(2, ns.Talents.pending()).hc, "/zug talents <name> picks one")
   zug("talents auto"); check(not ZugzugLevelerCharDB.talentGuide, "/zug talents auto")
@@ -1038,8 +1381,14 @@ do
   check(#played == n + 1, "no clip for other words: quiet")
   for _ = 1, 4 do pf.scripts.OnClick(pf) end
   check(ns.Peon.last == ns.Peon.ANNOYED[1], "poked four times: " .. tostring(ns.Peon.last))
-  pf.scripts.OnClick(pf); pf.scripts.OnClick(pf); pf.scripts.OnClick(pf)
+  pf.scripts.OnClick(pf); pf.scripts.OnClick(pf)
   check(ns.Peon.last == "Me not that kind of orc!", "and then the line everyone remembers")
+  pf.scripts.OnClick(pf)
+  local egg1 = ns.Peon.last
+  local isEgg = function(l) for _, e in ipairs(ns.Peon.EASTER) do if e == l then return true end end end
+  check(#ns.Peon.EASTER >= 2 and isEgg(egg1), "poked past the annoyed lines: an easter egg: " .. tostring(egg1))
+  pf.scripts.OnClick(pf)
+  check(isEgg(ns.Peon.last) and ns.Peon.last ~= egg1, "and never the same one twice running")
   W.gt = W.gt + 10; pf.scripts.OnClick(pf)
   local ready = false
   for _, l in ipairs(ns.Peon.READY) do if l == ns.Peon.last then ready = true end end
@@ -1294,6 +1643,8 @@ for _, s in ipairs(QLr.steps) do acts[#acts + 1] = s.act .. s.q end
 table.sort(acts)
 check(table.concat(acts, ",") == "accept1004,complete1001,turnin1002", "quest log steps: " .. table.concat(acts, ","))
 check(#ns.QuestLog.unplaced == 1 and ns.QuestLog.unplaced[1].q == 1003, "a quest with no position is listed, not routed")
+check(ZugzugLevelerCharDB.liveSteps and ZugzugLevelerCharDB.liveSteps.route == "Quest log" and #ZugzugLevelerCharDB.liveSteps.steps == #QLr.steps
+  and ZugzugLevelerCharDB.liveSteps.steps[1].map, "quest log mode saves its steps for the page's map")
 check(ns.Engine.step().q == 1001 or ns.Engine.step().q == 1004, "starts with what is nearest")
 W.log[1001].objs[1] = { text = "Bat wing: 6/6", finished = true }; W.log[1001].complete = true
 W.gt = W.gt + 1; fire("QUEST_LOG_UPDATE")
@@ -1309,6 +1660,23 @@ W.level = 6; fire("PLAYER_LEVEL_UP", 6); W.level = 5
 local back = false
 for _, s in ipairs(ns.Engine.route().steps) do if s.q == cur.q then back = true end end
 check(back, "level-up brings it back")
+-- a /reload in quest log mode: the saved optimizer plan names steps, but the
+-- mode's steps are rebuilt only after login (Engine.lua:122 / MapPath.lua:35, Mists)
+do
+  local qr = ns.Route.Get(ns.QuestLog.NAME)
+  local keep = qr.steps
+  ZugzugLevelerCharDB.plan = { list = { 3, 1 }, after = 4 }
+  qr.steps = {}
+  local ok1 = pcall(ns.Engine.evaluate)
+  local ok2 = pcall(ns.MapPath.points)
+  check(ok1 and ok2 and ZugzugLevelerCharDB.plan == nil, "a saved plan naming steps the route does not have yet is dropped, not followed")
+  qr.steps = keep
+end
+W.wp = { [1003] = { 1430, 0.25, 0.75 } }
+local placed
+for _, s in ipairs(ns.QuestLog.collect()) do if s.q == 1003 then placed = s end end
+check(placed and placed.map == 1430 and placed.x == 0.25 and placed.y == 0.75, "GetNextWaypoint's map AND x, y place a quest")
+W.wp = {}
 zug("ql debug")
 check(W.printed[#W.printed - 1]:find("placed", 1, true) or W.printed[#W.printed]:find("no position", 1, true), "ql debug reports")
 zug("optimize suggest")
@@ -1378,14 +1746,14 @@ for _, s in pairs(W.settings) do if s.options then nDrop = nDrop + 1 else nCheck
 check(nCheck == 26 and nDrop == 3, ("26 toggles and 3 dropdowns (%d, %d)"):format(nCheck, nDrop))
 -- play styles: hardcore / self-found steps, from the game or the panel
 check(ns.Engine.applies({ act = "goto", mode = "sc" }) and not ns.Engine.applies({ act = "goto", mode = "hc" }), "not hardcore: softcore steps in, hardcore ones out")
-C_GameRules = { IsHardcoreActive = function() return true end }
+C_GameRules = { IsHardcoreActive = function() return true end, GetForeverExperiencePreset = function() return 1 end }
 check(ns.Engine.applies({ act = "goto", mode = "hc" }) and not ns.Engine.applies({ act = "goto", mode = "sc" }), "the game says hardcore: hardcore steps in")
 W.settings.ZUGZUG_HARDCORE.set(false)
 check(not ns.Engine.applies({ act = "goto", mode = "hc" }), "the panel overrides it")
 check(not ns.Engine.applies({ act = "goto", mode = "ssf" }) and ns.Engine.applies({ act = "goto", mode = "ah" }), "not self-found: auction-house steps in")
 W.settings.ZUGZUG_SSF.set(true)
 check(ns.Engine.applies({ act = "goto", mode = "ssf" }) and not ns.Engine.applies({ act = "goto", mode = "ah" }) and not ns.Engine.applies({ act = "goto", mode = "hc,ssf" }), "self-found: its steps in; both marks need both")
-ZugzugLevelerCharDB.hardcore, ZugzugLevelerCharDB.ssf, C_GameRules = nil, nil, nil
+ZugzugLevelerCharDB.hardcore, ZugzugLevelerCharDB.ssf, C_GameRules = nil, nil, { GetForeverExperiencePreset = function() return 1 end }
 -- the goal, the pause and the route's step kinds, from the panel
 local goalSet = W.settings.ZUGZUG_GOAL
 goalSet.set(3); check(ns.db.goal == "complete" and goalSet.get() == 3, "goal dropdown: Completion")

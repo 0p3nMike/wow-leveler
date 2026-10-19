@@ -14,6 +14,10 @@
 --     when a quest wants you somewhere else first (another zone)
 --   C_QuestLine.RequestQuestLinesForMap / GetAvailableQuestLines(uiMapID)
 --     quest givers the map shows; isHidden (trivial, too low) are left out
+-- Mists of Pandaria Classic has neither GetNextWaypoint nor C_QuestLine: there
+-- quest givers come from the quest data (data/Quests_Mists.lua, AllTheThings),
+-- the ones QuestInfo says you can take now. That data rarely knows a quest's
+-- level, so grey ones are left out by a rule of thumb (QL.outlevelled).
 -- A quest the game gives no position for is listed in the window, not routed.
 -- /swap here sets that QUEST aside until you level up (/swap back).
 
@@ -47,6 +51,31 @@ end
 
 local function skipped() ns.cdb.qlSkip = ns.cdb.qlSkip or {}; return ns.cdb.qlSkip end
 
+-- A quest from the data that is grey for you, by a rule of thumb (the data
+-- has no quest levels, only a minimum level now and then): its minimum level
+-- 10+ under yours, or its zone's top level (C_Map.GetMapLevels, what the
+-- map's area labels show, AreaLabelDataProvider.lua:76) 3+ under yours.
+function QL.outlevelled(q)
+  local e, level = ns.QInfo.get(q), C.try(UnitLevel, "player")
+  if not (e and level) then return false end
+  local lvl = type(e.lvl) == "table" and e.lvl[1] or e.lvl
+  if lvl and lvl + 10 <= level then return true end
+  local top
+  if C_Map then _, top = C.try(C_Map.GetMapLevels, e.zone or (e.at and e.at[1])) end
+  return (top and top > 0 and top + 3 <= level) and true or false
+end
+
+-- Dungeon quests need a group. The quest data marks them (inst: AllTheThings
+-- lists them only under its Instances category, tools/att2quests.lua). On your
+-- own, quest log mode does not send you to pick one up or into the dungeon for
+-- its objectives (a finished one still gets turned in); in a party or raid it does.
+local function grouped() return (C.try(IsInGroup) or C.try(IsInRaid)) and true or false end
+local function isDungeon(q)
+  local e = ns.QInfo and ns.QInfo.get(q)
+  return (e and e.inst) and true or false
+end
+QL.dungeon = {} -- dungeon quests in your log that are left out while you are on your own
+
 -- The steps, nearest first. Returns placed steps; fills QL.unplaced.
 function QL.collect()
   local where = {}
@@ -57,11 +86,18 @@ function QL.collect()
       end
     end
   end
-  local steps, unplaced, skip = {}, {}, skipped()
+  local steps, unplaced, skip, dungeon = {}, {}, skipped(), {}
+  local solo = not grouped()
   for _, q in ipairs(C.questLogIDs()) do
-    if not skip[q] then
-      local done = C.isComplete(q)
-      local wmap, wx, wy = C_QuestLog and C.try(C_QuestLog.GetNextWaypoint, q)
+    local done = C.isComplete(q)
+    if skip[q] then
+      -- set aside (/swap)
+    elseif solo and not done and isDungeon(q) then
+      dungeon[#dungeon + 1] = q -- its objectives are inside a dungeon: not on your own
+    else
+      -- (not "C_QuestLog and C.try(...)": an and/or keeps only the first result)
+      local wmap, wx, wy
+      if C_QuestLog then wmap, wx, wy = C.try(C_QuestLog.GetNextWaypoint, q) end
       local pos = (wmap and wx and { map = wmap, x = wx, y = wy }) or where[q]
       local s = { act = done and "turnin" or "complete", q = q, title = C.questTitle(q) }
       if not done then
@@ -77,6 +113,7 @@ function QL.collect()
       end
     end
   end
+  QL.dungeon = dungeon
   -- quest givers on these maps
   if ns.db.qlAccept ~= false and C_QuestLine and C_QuestLine.GetAvailableQuestLines then
     local seen = {}
@@ -84,10 +121,23 @@ function QL.collect()
       C.try(C_QuestLine.RequestQuestLinesForMap, map)
       for _, ln in ipairs(C.try(C_QuestLine.GetAvailableQuestLines, map) or {}) do
         local q = ln.questID
-        if q and not seen[q] and not ln.isHidden and not ln.isDaily and not skip[q]
+        if q and not seen[q] and not ln.isHidden and not ln.isDaily and not skip[q] and not (solo and isDungeon(q))
           and not C.isOnQuest(q) and not C.isTurnedIn(q) and ln.x and (ln.x > 0 or ln.y > 0) then
           seen[q] = true
           steps[#steps + 1] = { act = "accept", q = q, title = ln.questName, map = map, x = ln.x, y = ln.y }
+        end
+      end
+    end
+  elseif ns.db.qlAccept ~= false and ns.QInfo then
+    -- no C_QuestLine: the quest data's giver points on these maps, for quests
+    -- this character can take now and has not outlevelled
+    local seen = {}
+    for _, map in ipairs(maps()) do
+      for _, q in ipairs(ns.QInfo.availableOn(map)) do
+        local at = ns.QInfo.get(q).at
+        if not seen[q] and not skip[q] and not QL.outlevelled(q) and not (solo and isDungeon(q)) then
+          seen[q] = true
+          steps[#steps + 1] = { act = "accept", q = q, title = ns.QInfo.title(q), map = at[1], x = at[2], y = at[3] }
         end
       end
     end
@@ -124,6 +174,7 @@ function QL.rebuild(force)
   if not force and sig == lastSig then return false end
   lastSig = sig
   route.steps = steps
+  Route.saveLive(QL.NAME, steps)
   if ns.Optimizer then ns.Optimizer.held = nil end -- step numbers start over: a held stretch no longer exists
   local db = ns.cdb
   db.step, db.sticky, db.deferred, db.plan = 1, {}, {}, nil
@@ -165,6 +216,7 @@ function QL.debug()
   C.print("quest log mode: %d placed (%d quest givers), %d with no position from the game; maps asked: %s",
     #placed, acc, #QL.unplaced, table.concat(maps(), ","))
   for _, s in ipairs(QL.unplaced) do C.print("  no position: %s", s.title or s.q) end
+  for _, q in ipairs(QL.dungeon) do C.print("  dungeon, left out while you are on your own: %s", ns.QInfo.title(q)) end
 end
 
 local function onChange()
@@ -176,6 +228,7 @@ ns.On("QUEST_ACCEPTED", function() if QL.active() then QL.rebuild(true) end end)
 ns.On("QUEST_TURNED_IN", function() if QL.active() then QL.rebuild(true) end end)
 ns.On("QUEST_REMOVED", function() if QL.active() then QL.rebuild(true) end end)
 ns.On("ZONE_CHANGED_NEW_AREA", function() if QL.active() then QL.rebuild(true) end end)
+ns.On("GROUP_ROSTER_UPDATE", function() if QL.active() then QL.rebuild() end end) -- dungeon quests come and go with a group
 ns.On("PLAYER_ENTERING_WORLD", function() if QL.active() then QL.rebuild(true) end end)
 ns.On("SL_TICK", function()
   if QL.active() and C.now() - lastBuild > REBUILD_EVERY then QL.rebuild() end

@@ -76,6 +76,31 @@ export function charOptions(options, look) {
   return options.map(o => ({ optionId: o.Id, choiceId: (o.Choices[look[o.Id] || 0] || o.Choices[0] || {}).Id })).filter(o => o.choiceId != null);
 }
 
+// A clear stage, no black box behind the character.
+//
+// The viewer already clears its canvas to alpha 0 (viewer.min.js:
+// clearColor(r, g, b, 0) on a context made with {alpha: true}); the black was
+// the page's. What made a black page necessary is how it blends ALPHA: glows
+// (the Arcane Orb's) are drawn additively, blendFuncSeparate(SRC_ALPHA, ONE,
+// ONE, ONE), and see-through layers with (SRC_ALPHA, ONE_MINUS_SRC_ALPHA, ONE,
+// ONE) -- both ADD alpha, so on a clear stage a glow's quad turns opaque black.
+// On the model's canvas only, the alpha half is replaced: an additive draw
+// leaves alpha alone (ZERO, ONE), a see-through one composites it the usual way
+// (ONE, ONE_MINUS_SRC_ALPHA). Colour is untouched: over the character it looks
+// the same, over the page a glow fades in instead of leaving a square.
+const getContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+  const gl = getContext.call(this, kind, ...rest);
+  if (gl && (kind === "webgl" || kind === "experimental-webgl") && this.closest && this.closest(".model3d") && !gl.__clearStage) {
+    const sep = gl.blendFuncSeparate.bind(gl);
+    const alphaFor = dst => dst === gl.ONE ? [gl.ZERO, gl.ONE] : dst === gl.ONE_MINUS_SRC_ALPHA ? [gl.ONE, gl.ONE_MINUS_SRC_ALPHA] : null;
+    gl.blendFuncSeparate = (sc, dc, sa, da) => { const a = alphaFor(dc); return a ? sep(sc, dc, a[0], a[1]) : sep(sc, dc, sa, da); };
+    gl.blendFunc = (src, dst) => { const a = alphaFor(dst); return a ? sep(src, dst, a[0], a[1]) : sep(src, dst, src, dst); };
+    gl.__clearStage = true;
+  }
+  return gl;
+};
+
 let current;
 // Draw into `el` (an element already on the page). Returns the viewer.
 export async function show(el, { race, body, items, options }) {

@@ -29,7 +29,7 @@ local function on() return ns.db.danger ~= false end
 local function prepare()
   if list then return list end
   local faction = C.try(UnitFactionGroup, "player")
-  local src = ns.DangerData and faction and ns.DangerData[faction] or {}
+  local src = C.isForever() and ns.DangerData and faction and ns.DangerData[faction] or {} -- Forever's mobs
   list = {}
   for _, e in ipairs(src) do
     local w = { pins = {}, segs = {} }
@@ -156,7 +156,7 @@ local function learn(unit)
   if type(name) ~= "string" or (issecretvalue and issecretvalue(name)) then return end
   if not names then
     names = {}
-    for _, side in pairs(ns.DangerData or {}) do for _, e in ipairs(side) do names[e.n] = true end end
+    for _, side in pairs(C.isForever() and ns.DangerData or {}) do for _, e in ipairs(side) do names[e.n] = true end end
   end
   if not names[name] then return end
   local id = tonumber(guid:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)%-"))

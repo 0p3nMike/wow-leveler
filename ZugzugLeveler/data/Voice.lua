@@ -6,6 +6,7 @@ local _, ns = ...
 ns.PeonLines = {
   ready = { "Something need doing?", "Ready to work.", "Work, work.", "Zug zug.", "Okie dokie.", "Be happy to." },
   annoyed = { "Why you poking me again?", "Me busy. Leave me alone!", "Me not that kind of orc!" },
+  easter = { "Gotta have them ribs, and pussy 2!", "The Horde does not negotiate with terrorists. Now watch this drive." },
   game = { pause = "Break. Me wait.", resume = "Back to work!", turnin = "Work complete.", levelup = "Zug zug! Level up!", talent = "New talent. Me show.", zone = "New zone. Me lead.", ask = "Me need answer.", hello = "Zug zug! Me peon. Me ask few things.", goodbye = "Ready to work. Detour? Pause button. Lost? Click me." },
 }
 ns.PeonVoice = {
@@ -18,6 +19,8 @@ ns.PeonVoice = {
   ["Why you poking me again?"] = "30b6b64998b555f2b8ef",
   ["Me busy. Leave me alone!"] = "8ce2d894a2aea4b3ee31",
   ["Me not that kind of orc!"] = "f731ad615732096458f9",
+  ["Gotta have them ribs, and pussy 2!"] = "1766f1a6bf7e7ec2ae9b",
+  ["The Horde does not negotiate with terrorists. Now watch this drive."] = "44903d2d86df23f681b4",
   ["Break. Me wait."] = "012fd761994ae757ba86",
   ["Back to work!"] = "206c38f3e23b7660d51a",
   ["Work complete."] = "189862c4b0771add6c3a",

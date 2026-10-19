@@ -44,7 +44,7 @@ const askMaxTokens = 300
 
 // askFacts: what the model may use, as plain text.
 func (s *Server) askFacts(key string) (string, error) {
-	_, chars := s.paths.Scan()
+	_, chars := s.P().Scan()
 	var path string
 	for _, c := range chars {
 		if c.Key() == key {
@@ -74,7 +74,8 @@ func (s *Server) askFacts(key string) (string, error) {
 		}
 	}
 	// the quest log, with each quest's own text and the quest data's facts
-	qdbAny, _ := s.load(s.paths.AddonDir()+"/data/Quests.lua", func() (any, error) { return s.paths.ReadLiteral("data/Quests.lua", "ns.QuestDB =") })
+	qf, qm := s.questFile()
+	qdbAny, _ := s.load(s.P().AddonDir()+"/"+qf, func() (any, error) { return s.P().ReadLiteral(qf, qm) })
 	qdb := byKey(qdbAny)
 	var logIDs []int
 	entries := list(db["questLog"])
@@ -120,7 +121,7 @@ func (s *Server) askFacts(key string) (string, error) {
 
 func mapName(s *Server, id any) string {
 	k := strconv.Itoa(int(num(id)))
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	for a := range accts {
 		if db, err := s.accountDB(a); err == nil {
 			if m, ok := byKey(db["maps"])[k].(map[string]any); ok && m["name"] != nil {

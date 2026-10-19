@@ -114,6 +114,7 @@ end
 -- UnitRace's second value ("Scourge") and UnitClass's second ("MAGE"), read
 -- while the addon's files load; unknown then -> load everything.
 function Route.Skip(race, class)
+  if not C.isForever() then return true end -- RestedXP's Forever routes (Compat.lua C.isForever)
   local _, r = C.try(UnitRace, "player")
   local _, c = C.try(UnitClass, "player")
   if type(r) ~= "string" or type(c) ~= "string" then return false end
@@ -127,6 +128,20 @@ function Route.Register(def)
   if def.faction and mine and def.faction ~= mine then return end
   if not fileRoutes[def.name] then order[#order + 1] = def.name end
   fileRoutes[def.name] = def
+end
+
+-- A route that builds itself in game (quest log mode, farming) is not a file the
+-- companion page can read: its steps as they are now, for the page's map and
+-- "next stop" (app.js upcoming), the first 60.
+--   ZugzugLevelerCharDB.liveSteps = { route = name, steps = { { act, q, title, map, x, y, hint, text } } }
+function Route.saveLive(name, steps)
+  if not ns.cdb then return end
+  local out = {}
+  for k = 1, math.min(#steps, 60) do
+    local s = steps[k]
+    out[k] = { act = s.act, q = s.q, title = s.title, map = s.map, x = s.x, y = s.y, hint = s.hint, text = s.text }
+  end
+  ns.cdb.liveSteps = { route = name, steps = out }
 end
 
 function Route.Get(name)

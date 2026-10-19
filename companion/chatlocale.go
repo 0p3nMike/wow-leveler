@@ -73,7 +73,7 @@ func compileFormat(f string) *locRule {
 // chatStrings: the client's format strings from the newest account save that
 // has them, into the chat log reader.
 func (s *Server) chatStrings() {
-	accts, _ := s.paths.Scan()
+	accts, _ := s.P().Scan()
 	var best map[string]any
 	for a := range accts {
 		db, err := s.accountDB(a)
@@ -89,7 +89,7 @@ func (s *Server) chatStrings() {
 	}
 	locale, _ := best["locale"].(string)
 	strs, _ := best["s"].(map[string]any)
-	s.chat.SetStrings(locale, strs)
+	s.Chat().SetStrings(locale, strs)
 }
 
 // the GlobalStrings Live.lua saves, and what each line is

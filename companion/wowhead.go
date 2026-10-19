@@ -37,10 +37,13 @@ type Wowhead struct {
 	Quests string           // quest tooltip JSON URL, %d = quest id
 	Dir    string           // cache folder
 	Zones  map[string][]int // zone name -> Wowhead zone ids (web/data/zones.json)
-	http   *http.Client
-	mu     sync.Mutex
-	miss   map[string]time.Time // recent 404s, so a missing file is not asked for again and again
-	art    map[string]int       // zone name -> the zone id whose map image exists (0: none)
+	// Mists of Pandaria Classic: zone name -> area ids (web/data/zones-mists.json,
+	// the 5.5.4 AreaTable), drawn from Wowhead's "mists" map set
+	ZonesMists map[string][]int
+	http       *http.Client
+	mu         sync.Mutex
+	miss       map[string]time.Time // recent 404s, so a missing file is not asked for again and again
+	art        map[string]int       // zone name -> the zone id whose map image exists (0: none)
 }
 
 func NewWowhead() *Wowhead {
@@ -54,22 +57,35 @@ func NewWowhead() *Wowhead {
 	if b, err := webFS.ReadFile("web/data/zones.json"); err == nil {
 		_ = json.Unmarshal(b, &z)
 	}
+	var zm struct {
+		Zones map[string][]int `json:"zones"`
+	}
+	if b, err := webFS.ReadFile("web/data/zones-mists.json"); err == nil {
+		_ = json.Unmarshal(b, &zm)
+	}
 	return &Wowhead{
-		Files:  "https://wow.zamimg.com/",
-		Items:  "https://www.wowhead.com/forever/item=%d&xml",
-		Quests: "https://nether.wowhead.com/forever/tooltip/quest/%d",
-		Dir:    filepath.Join(dir, "zugzugleveler", "wowhead"),
-		Zones:  z.Zones,
-		http:   &http.Client{Timeout: 30 * time.Second},
-		miss:   map[string]time.Time{},
-		art:    map[string]int{},
+		Files:      "https://wow.zamimg.com/",
+		Items:      "https://www.wowhead.com/forever/item=%d&xml",
+		Quests:     "https://nether.wowhead.com/forever/tooltip/quest/%d",
+		Dir:        filepath.Join(dir, "zugzugleveler", "wowhead"),
+		Zones:      z.Zones,
+		ZonesMists: zm.Zones,
+		http:       &http.Client{Timeout: 30 * time.Second},
+		miss:       map[string]time.Time{},
+		art:        map[string]int{},
 	}
 }
 
 // The zone maps Wowhead's Forever pages show (images/wow/classicplus/maps/...):
 // the game's own map art, in the same 0-1 frame as the addon's map coordinates.
+// Mists of Pandaria Classic's are the "mists" set (images/wow/mists/maps/...:
+// checked 2026-10-19, Hellfire Peninsula 3483, The Jade Forest 5785, Kun-Lai
+// Summit 5841 all there).
 func mapImage(zone int) string {
 	return fmt.Sprintf("images/wow/classicplus/maps/enus/original/%d.jpg", zone)
+}
+func mapImageMists(zone int) string {
+	return fmt.Sprintf("images/wow/mists/maps/enus/original/%d.jpg", zone)
 }
 
 // /api/mapart?name=Silverpine Forest -> {"zone": 130, "url": "/wh/images/..."}.
@@ -78,12 +94,16 @@ func mapImage(zone int) string {
 // so the first id with a map image wins (the original zone, ids ascending).
 func (wh *Wowhead) mapArt(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
+	zones, image, key := wh.Zones, mapImage, name
+	if r.URL.Query().Get("game") == "mists" { // ?game=mists: the page shows Mists of Pandaria Classic
+		zones, image, key = wh.ZonesMists, mapImageMists, "mists:"+name
+	}
 	wh.mu.Lock()
-	id, known := wh.art[name]
+	id, known := wh.art[key]
 	wh.mu.Unlock()
 	if !known {
-		for _, z := range wh.Zones[name] {
-			if _, code, err := wh.file(mapImage(z)); err == nil {
+		for _, z := range zones[name] {
+			if _, code, err := wh.file(image(z)); err == nil {
 				id = z
 				break
 			} else if code != http.StatusNotFound {
@@ -92,18 +112,18 @@ func (wh *Wowhead) mapArt(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		wh.mu.Lock()
-		wh.art[name] = id
+		wh.art[key] = id
 		wh.mu.Unlock()
 	}
 	out := map[string]any{"zone": id}
 	if id != 0 {
-		out["url"] = "/wh/" + mapImage(id)
+		out["url"] = "/wh/" + image(id)
 	}
 	writeJSON(w, out, nil)
 }
 
-// Only the model viewer's files, item icons and Forever zone maps, in plain path characters.
-var filePath = regexp.MustCompile(`^(modelviewer/[A-Za-z0-9_\-./]+|images/wow/icons/(large|medium|small)/[a-z0-9_\-]+\.jpg|images/wow/classicplus/maps/enus/(normal|zoom|original)/\d+\.jpg)$`)
+// Only the model viewer's files, item icons and Forever / Mists zone maps, in plain path characters.
+var filePath = regexp.MustCompile(`^(modelviewer/[A-Za-z0-9_\-./]+|images/wow/icons/(large|medium|small)/[a-z0-9_\-]+\.jpg|images/wow/(classicplus|mists)/maps/enus/(normal|zoom|original)/\d+\.jpg)$`)
 
 func (wh *Wowhead) get(url string) ([]byte, int, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)

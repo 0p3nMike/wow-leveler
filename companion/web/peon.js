@@ -24,7 +24,7 @@ const STAND = "Stand1";
 // His fixed lines (peon/lines.json, shared with tools/peon_voice.py, which
 // renders each one into the voice cache): Warcraft III's peon, clicked once,
 // then too often, and the page's own few.
-export const lines = { ready: ["Something need doing?"], annoyed: ["Me not that kind of orc!"], tabs: {}, think: "Hmm... me think.", unknown: "Me not know." };
+export const lines = { ready: ["Something need doing?"], annoyed: ["Me not that kind of orc!"], easter: [], tabs: {}, think: "Hmm... me think.", unknown: "Me not know." };
 export async function loadLines() {
   try { Object.assign(lines, await (await fetch("peon/lines.json")).json()); } catch { }
   return lines;
@@ -241,15 +241,25 @@ export function helper(root, { onPoke, voice = false } = {}) {
     show(text, Math.min(text.length * 40, 6000));
   }
 
-  // clicked: a ready line, then, clicked too often, the annoyed ones
-  let pokes = 0, lastPoke = 0;
+  // clicked: a ready line, then, clicked too often, the annoyed ones, and past
+  // those an easter egg (never the same one twice running)
+  let pokes = 0, lastPoke = 0, lastEgg = -1;
+  const egg = () => {
+    const n = lines.easter.length;
+    if (!n) return lines.annoyed[lines.annoyed.length - 1];
+    let k = Math.floor(Math.random() * n);
+    if (n > 1 && k === lastEgg) k = (k + 1) % n;
+    lastEgg = k;
+    return lines.easter[k];
+  };
   frame.addEventListener("click", () => {
     const now = performance.now();
     pokes = now - lastPoke < 2500 ? pokes + 1 : 1;
     lastPoke = now;
     const own = onPoke && pokes === 1 ? onPoke() : null;
     if (own) say(own);
-    else if (pokes >= 4) say(lines.annoyed[Math.min(pokes - 4, lines.annoyed.length - 1)], true);
+    else if (pokes >= 4 + lines.annoyed.length) say(egg(), true);
+    else if (pokes >= 4) say(lines.annoyed[pokes - 4], true);
     else say(lines.ready[Math.floor(Math.random() * lines.ready.length)]);
   });
 
@@ -289,11 +299,12 @@ export function helper(root, { onPoke, voice = false } = {}) {
       play(CLIP[activity] || STAND, 0.5);
       if (still) draw(0);
     },
-    bars(xp, xpMax, step, steps) {
+    // what: the second bar's words when the route has no fixed steps (quest log mode)
+    bars(xp, xpMax, step, steps, what) {
       // (a unit's health and mana: XP on this level, and how far along the route)
       hp.textContent = xpMax ? `${xp} / ${xpMax}` : "— / —";
       hp.title = "XP on this level";
-      mp.textContent = steps ? `${step} / ${steps}` : "no route";
+      mp.textContent = steps ? `${step} / ${steps}` : what || "no route";
       mp.title = "Step on the route";
     },
   };

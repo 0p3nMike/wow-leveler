@@ -448,8 +448,19 @@ function Coach.routeFor()
 end
 
 -- How do you want to play? Asked once (the page can change it: Plan & Runs).
+-- Any guide besides the routes that build themselves (quest log mode, farming)?
+-- (Mists of Pandaria Classic has none: Forever's routes stay off there.)
+local function haveGuides()
+  for _, r in ipairs(Route.List()) do
+    local def = Route.Get(r.name)
+    if not (def and def.dynamic) then return true end
+  end
+  return false
+end
+
 ns.On("PLAYER_ENTERING_WORLD", function()
-  if not on() or Route.goal() or ns.db.goalAsked then return end
+  -- the goal picks which guide steps to skip: nothing to ask without a guide
+  if not on() or Route.goal() or ns.db.goalAsked or not haveGuides() then return end
   local function askGoal()
     if Route.goal() then return end
     ns.db.goalAsked = true
@@ -461,8 +472,24 @@ ns.On("PLAYER_ENTERING_WORLD", function()
 end)
 
 ns.On("PLAYER_ENTERING_WORLD", function()
+  -- a route that is not here any more (a Forever route a Mists character was
+  -- put on before C.isForever): ask again
+  if ns.cdb.route and ns.cdb.route ~= ns.QuestLog.NAME and not Route.Get(ns.cdb.route) and not haveGuides() then
+    ns.cdb.route, ns.cdb.offeredRoute = nil, nil
+  end
   if not on() or ns.cdb.route or ns.cdb.offeredRoute then return end
   local name = Coach.routeFor()
+  if not name and not haveGuides() then
+    -- no guide for this game: offer quest log mode
+    local function offerLog()
+      if ns.cdb.route then return end
+      ns.cdb.offeredRoute = true
+      Coach.ask("route", "No guide for this game yet. Follow your quests instead? The arrow takes the shortest way through your quest log and the quest givers near you.",
+        "My quests", "Not now", function() ns.QuestLog.start(); C.print("following your quests; /zug why explains any step") end, "/zug questlog does the same")
+    end
+    if C_Timer and C_Timer.After then C_Timer.After(5, offerLog) else offerLog() end
+    return
+  end
   if not name then return end
   local function follow(n) Eng().setRoute(n); C.print("following %q; /zug why explains any step", n) end
   local function offer()

@@ -11,12 +11,27 @@
 import { h } from "./charts.js";
 import * as I from "./items.js";
 
-const WOWHEAD = "https://www.wowhead.com/forever";
+// The game the page shows (setGame): "forever" or "mists" (Mists of Pandaria
+// Classic). Mists differs in the item data (stat names, no ranged slot, armor
+// specialization) and in where Wowhead keeps it.
+let GAME = "forever";
+export let WOWHEAD = "https://www.wowhead.com/forever";
 
 // The character frame's slots (Camelot PaperDollFrame.xml), in its columns.
 export const LEFT = ["Head", "Neck", "Shoulder", "Back", "Chest", "Shirt", "Tabard", "Wrist"];
 export const RIGHT = ["Hands", "Waist", "Legs", "Feet", "Finger0", "Finger1", "Trinket0", "Trinket1"];
-export const BOTTOM = ["MainHand", "SecondaryHand", "Ranged"];
+export let BOTTOM = ["MainHand", "SecondaryHand", "Ranged"];
+
+// Mists of Pandaria Classic: no ranged slot (its Cata/PaperDollFrame.lua shows
+// CharacterRangedSlot only when C_PaperDollInfo.IsRangedSlotShown()), so bows,
+// guns and wands are main-hand weapons; Wowhead's pages are under /mop-classic/
+// (e.g. www.wowhead.com/mop-classic/item=90387).
+export function setGame(g) {
+  GAME = g === "mists" ? "mists" : "forever";
+  WOWHEAD = GAME === "mists" ? "https://www.wowhead.com/mop-classic" : "https://www.wowhead.com/forever";
+  BOTTOM = GAME === "mists" ? ["MainHand", "SecondaryHand"] : ["MainHand", "SecondaryHand", "Ranged"];
+}
+export const isMists = () => GAME === "mists";
 const LABEL = { Finger0: "Ring", Finger1: "Ring", Trinket0: "Trinket", Trinket1: "Trinket", MainHand: "Main hand", SecondaryHand: "Off hand" };
 export const label = s => LABEL[s] || s;
 
@@ -30,7 +45,8 @@ const LOC = {
   INVTYPE_WEAPONOFFHAND: ["SecondaryHand"], INVTYPE_SHIELD: ["SecondaryHand"], INVTYPE_HOLDABLE: ["SecondaryHand"],
   INVTYPE_RANGED: ["Ranged"], INVTYPE_RANGEDRIGHT: ["Ranged"], INVTYPE_THROWN: ["Ranged"],
 };
-export const LOC_SLOTS = loc => LOC[loc];
+const RANGED_LOC = new Set(["INVTYPE_RANGED", "INVTYPE_RANGEDRIGHT", "INVTYPE_THROWN"]);
+export const LOC_SLOTS = loc => GAME === "mists" && RANGED_LOC.has(loc) ? ["MainHand"] : LOC[loc];
 // A Lua list as an array: an empty table (or a sparse one) reaches us as an object.
 export const arr = v => Array.isArray(v) ? v : v && typeof v === "object" ? Object.values(v) : [];
 
@@ -55,7 +71,17 @@ const CLASSES = {
   WARLOCK: { slot: { INVTYPE_RANGEDRIGHT: 1 }, armor: {}, weapon: { [W.Sword1H]: 1, [W.Dagger]: 1, [W.Staff]: 1, [W.Wand]: 1 } },
   WARRIOR: { slot: { INVTYPE_THROWN: 1, INVTYPE_RANGEDRIGHT: 1, INVTYPE_SHIELD: 1, INVTYPE_WEAPONOFFHAND: 18 }, armor: { [A.Shield]: 1, [A.Leather]: 1, [A.Mail]: 1, [A.Plate]: 35 },
     weapon: { [W.Axe1H]: 1, [W.Axe2H]: 1, [W.Bows]: 1, [W.Guns]: 1, [W.Mace1H]: 1, [W.Mace2H]: 1, [W.Polearm]: 18, [W.Sword1H]: 1, [W.Sword2H]: 1, [W.Staff]: 1, [W.Unarmed]: 1, [W.Thrown]: 1, [W.Dagger]: 1, [W.Crossbow]: 1 } },
+  // Mists of Pandaria classes (not in RestedXP's classic CLASS_MAP)
+  DEATHKNIGHT: { slot: {}, armor: { [A.Leather]: 1, [A.Mail]: 1, [A.Plate]: 1 },
+    weapon: { [W.Axe1H]: 1, [W.Axe2H]: 1, [W.Mace1H]: 1, [W.Mace2H]: 1, [W.Polearm]: 1, [W.Sword1H]: 1, [W.Sword2H]: 1 } },
+  MONK: { slot: {}, armor: { [A.Leather]: 1 },
+    weapon: { [W.Axe1H]: 1, [W.Mace1H]: 1, [W.Sword1H]: 1, [W.Polearm]: 1, [W.Staff]: 1, [W.Unarmed]: 1 } },
 };
+// the armor a class wears at the top (Mists' armor specialization: from 50, a
+// class gets its bonus only in its own armor type, so the others are no upgrade)
+const TOP_ARMOR = { DEATHKNIGHT: A.Plate, PALADIN: A.Plate, WARRIOR: A.Plate, HUNTER: A.Mail, SHAMAN: A.Mail,
+  DRUID: A.Leather, ROGUE: A.Leather, MONK: A.Leather, MAGE: A.Cloth, PRIEST: A.Cloth, WARLOCK: A.Cloth };
+const ARMOR_SLOTS = new Set(["INVTYPE_HEAD", "INVTYPE_SHOULDER", "INVTYPE_CHEST", "INVTYPE_ROBE", "INVTYPE_WRIST", "INVTYPE_HAND", "INVTYPE_WAIST", "INVTYPE_LEGS", "INVTYPE_FEET"]);
 export const CLASS_NAMES = Object.keys(CLASSES);
 
 // Can this class wear it at this level? (null when the item lacks the data to tell)
@@ -64,6 +90,7 @@ export function wearable(it, cls, level) {
   if (!c || !it.loc) return null;
   const at = n => n != null && level >= n;
   if (!ALL_SLOTS.includes(it.loc) && !at(c.slot[it.loc])) return false;
+  if (GAME === "mists" && it.cid === 4 && ARMOR_SLOTS.has(it.loc) && level >= 50 && TOP_ARMOR[cls] != null) return it.sc === TOP_ARMOR[cls];
   if (it.cid === 4) return it.sc === A.Generic || it.sc === A.Cloth || at(c.armor[it.sc]);
   if (it.cid === 2) return it.sc === W.Generic || at(c.weapon[it.sc]);
   return it.cid == null ? null : true;
@@ -76,9 +103,19 @@ const SPELL = /damage and healing done by magical spells and effects by up to (\
 const SPEED = /Speed (\d+[.,]\d+)/;
 const MP5 = /Restores (\d+) mana per 5 sec/i;
 
+// One name per stat. Mists' GetItemStats gives some names without _SHORT
+// (ITEM_MOD_CRIT_RATING, ITEM_MOD_HIT_RATING, ITEM_MOD_DODGE_RATING ... seen in a
+// 5.5.4 save) where Forever and the weight files use the _SHORT ones.
+export function canon(k) {
+  if (k === "ITEM_MOD_HASTE") return "ITEM_MOD_HASTE_RATING_SHORT";
+  if (k.startsWith("ITEM_MOD_") && !k.endsWith("_SHORT") && !k.includes("_SHORT_") && k !== "ITEM_MOD_SPELL_POWER" && k !== "ITEM_MOD_SPELL_DAMAGE_DONE") return k + "_SHORT";
+  return k;
+}
+
 // GetItemStats plus what only the tooltip says (weapon speed, spell damage per school).
 export function statsOf(it) {
-  const s = { ...(it.stats || {}) };
+  const s = {};
+  for (const [k, v] of Object.entries(it.stats || {})) s[GAME === "mists" ? canon(k) : k] = v;
   let school = false, spell = null;
   for (const line of arr(it.tip)) {
     let m;
@@ -89,7 +126,7 @@ export function statsOf(it) {
   }
   const api = s.ITEM_MOD_SPELL_POWER ?? s.ITEM_MOD_SPELL_DAMAGE_DONE;
   if (spell != null) s.STAT_SPELLDAMAGE = spell;
-  else if (!school && api != null) s.STAT_SPELLDAMAGE = api + 1; // RestedXP: the API value reads 1 under the tooltip
+  else if (!school && api != null) s.STAT_SPELLDAMAGE = GAME === "mists" ? api : api + 1; // RestedXP: Forever's API value reads 1 under the tooltip
   delete s.ITEM_MOD_SPELL_POWER; delete s.ITEM_MOD_SPELL_DAMAGE_DONE;
   return s;
 }
@@ -142,7 +179,16 @@ const STAT_LABEL = {
   ITEM_MOD_DAMAGE_PER_SECOND_SHORT: "Weapon DPS", ITEM_MOD_DAMAGE_PER_SECOND_SHORT_RANGED: "Ranged or wand DPS",
   ITEM_MOD_DEFENSE_SKILL_RATING_SHORT: "Defense", ITEM_MOD_DODGE_RATING_SHORT: "Dodge (1%)", ITEM_MOD_PARRY_RATING_SHORT: "Parry (1%)",
 };
+// Mists: ratings are points of rating, not percent; its own stats
+const STAT_LABEL_MISTS = {
+  ITEM_MOD_HIT_RATING_SHORT: "Hit rating", ITEM_MOD_CRIT_RATING_SHORT: "Crit rating", ITEM_MOD_HASTE_RATING_SHORT: "Haste rating",
+  ITEM_MOD_MASTERY_RATING_SHORT: "Mastery rating", ITEM_MOD_EXPERTISE_RATING_SHORT: "Expertise rating",
+  ITEM_MOD_DODGE_RATING_SHORT: "Dodge rating", ITEM_MOD_PARRY_RATING_SHORT: "Parry rating", STAT_SPELLDAMAGE: "Spell power",
+  ITEM_MOD_PVP_POWER_SHORT: "PvP power", ITEM_MOD_RESILIENCE_RATING_SHORT: "PvP resilience", ITEM_MOD_EXTRA_ARMOR_SHORT: "Bonus armor",
+  ITEM_MOD_DAMAGE_PER_SECOND_SHORT_OH: "Off-hand DPS",
+};
 export function statLabel(k) {
+  if (GAME === "mists" && STAT_LABEL_MISTS[k]) return STAT_LABEL_MISTS[k];
   if (STAT_LABEL[k]) return STAT_LABEL[k];
   let m;
   if ((m = k.match(/^STAT_SPELLDAMAGE_(\w+)$/))) return `${m[1][0]}${m[1].slice(1).toLowerCase()} damage`;
@@ -214,7 +260,7 @@ export function catalogue(gear, known, route, done = new Set()) {
   const routeQ = turninSteps(route);
   for (const [q, r] of Object.entries(known.quests || {})) {
     if (done.has(+q)) continue;
-    for (const kind of ["choice", "reward"]) for (const id of arr(r[kind])) add(items[id], { kind: "quest", q: +q, title: r.title, choice: kind === "choice", step: routeQ.get(+q) });
+    for (const kind of ["choice", "reward"]) for (const id of arr(r[kind])) add(items[id], { kind: "quest", q: +q, title: r.title, choice: kind === "choice", step: routeQ.get(+q), map: r.map });
   }
   for (const [id, sellers] of Object.entries(known.vendors || {})) for (const v of arr(sellers)) add(items[id], { kind: "vendor", ...v });
   return [...by.values()];
@@ -263,7 +309,7 @@ export function bestChoice(opts, worn, w, cls, level) {
   let up = null;
   for (const it of opts) {
     if (wearable(it, cls, Math.max(level, it.req || 1)) === false) continue;
-    for (const sl of LOC[it.loc] || []) {
+    for (const sl of LOC_SLOTS(it.loc) || []) {
       const gain = (score(it, w, sl) ?? 0) - (worn[sl] ? score(worn[sl], w, sl) ?? 0 : 0);
       if (gain > 0.05 && (!up || gain > up.gain)) up = { it, gain, slot: sl };
     }
@@ -276,9 +322,25 @@ export function bestChoice(opts, worn, w, cls, level) {
 // The weight set a character uses: the spec saved on the Gear tab, else the
 // talent tree with the most points, else the AoE weights on an AoE route,
 // else the first one RestedXP lists.
-export function weightsForChar(sets, cls, level, trees, route, pref = {}) {
+//   cur: the spec the game says is active (Mists has no talent points per tree)
+// A spec only one kind of weights has (Mists: wowsims has every spec, RestedXP's
+// leveling weights only some) is looked for in the other kinds too.
+export function weightsForChar(sets, cls, level, trees, route, pref = {}, cur) {
   let r = weightsFor(sets, cls, level, pref.spec, pref.kind || "Speedrun");
   if (pref.spec && r.specs.includes(pref.spec)) return { ...r, spec: pref.spec };
+  const active = cur && arr(trees)[cur - 1] && arr(trees)[cur - 1].name;
+  const want = pref.spec || active;
+  const same = s => s.toLowerCase() === String(want).toLowerCase();
+  if (want && !r.specs.some(same)) {
+    const order = [pref.kind, ...r.kinds.filter(k => /pre/i.test(k)), ...r.kinds].filter(Boolean);
+    for (const k of order) {
+      const hit = weightsFor(sets, cls, level, want, k).specs.find(same);
+      if (hit) return { ...weightsFor(sets, cls, level, hit, k), spec: hit };
+    }
+  } else if (want) {
+    const hit = r.specs.find(same);
+    return { ...weightsFor(sets, cls, level, hit, r.kind), spec: hit };
+  }
   const top = arr(trees).slice().sort((a, b) => (b.points || 0) - (a.points || 0))[0];
   const byTalent = top && top.points > 0 && r.specs.find(s => s.toLowerCase() === String(top.name).toLowerCase());
   const byRoute = /aoe/i.test(route || "") && r.specs.find(s => /aoe/i.test(s));
@@ -292,7 +354,8 @@ export function whereText(from, maps) {
   if (!f) return "";
   if (f.kind === "worn") return "wearing it";
   if (f.kind === "bag") return "in your bags";
-  if (f.kind === "quest") return h("span", {}, f.choice ? "pick from " : "reward of ", h("a", { href: `${WOWHEAD}/quest=${f.q}`, target: "_blank", rel: "noopener" }, f.title || `quest ${f.q}`), f.step ? ` (route step ${f.step})` : "");
+  if (f.kind === "quest") return h("span", {}, f.choice ? "pick from " : "reward of ", h("a", { href: `${WOWHEAD}/quest=${f.q}`, target: "_blank", rel: "noopener" }, f.title || `quest ${f.q}`),
+    f.step ? ` (route step ${f.step})` : f.map && maps[f.map] ? ` (${maps[f.map].name})` : "");
   const where = f.map && maps[f.map] ? ` in ${maps[f.map].name}` : "";
   return `${f.npc || "a merchant"}${where}${f.price ? `, ${money(f.price)}` : ""}`;
 }

@@ -40,7 +40,7 @@ var updateCache struct {
 
 // installedVersion: "## Version:" in the installed addon's TOC.
 func (s *Server) installedVersion() string {
-	b, err := os.ReadFile(filepath.Join(s.paths.AddonDir(), "ZugzugLeveler.toc"))
+	b, err := os.ReadFile(filepath.Join(s.P().AddonDir(), "ZugzugLeveler.toc"))
 	if err != nil {
 		return ""
 	}

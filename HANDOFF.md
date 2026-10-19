@@ -125,6 +125,72 @@ game rewrites the old file on exit); until then it reads them as they are. deplo
   answer as the peon (max_tokens 300). New lines on the page: Settings, "Chatterbox for new
   lines". File name = sha1("<voice>\n<text>")[:20] in Go, Python and data/Voice.lua.
 
+## Mists of Pandaria Classic (added 2026-10-18)
+
+- **One TOC for both games**, as RXPGuides.toc does: `## Interface: 16001, 50504`, Forever-only files
+  tagged `[AllowLoadGameType camelot]` (routes, talents, professions plan, danger, data/Quests.lua),
+  `data/Quests_Mists.lua [AllowLoadGameType mists]`. Linked into `_classic_` (`.\deploy.ps1 -Client _classic_`).
+- **Compat.lua** tries the C_QuestLog call, then 5.5.4's old globals (GetQuestLogTitle, IsQuestComplete,
+  GetQuestsCompleted, GetQuestLogIndexByID, C_QuestLog.GetQuestInfo, GetQuestLogQuestText with
+  SelectQuestLogEntry). Also C.tooltip (hidden GameTooltip when there is no C_TooltipInfo), and old
+  GetInventorySlotInfo / GetItemStats / GetMerchantItemInfo / GetSkillLineInfo / GetTradeSkillInfo.
+  Signatures read from Gethe/wow-ui-source branch `classic` (5.5.4.70449) and Ketho's classic GlobalAPI.
+- **No guide on Mists**: the coach offers quest log mode; quest givers come from data/Quests_Mists.lua
+  (QuestInfo.availableOn) because Mists has no C_QuestLine; QL.outlevelled drops grey ones by a rule
+  of thumb (min level 10+ under you, or the zone's C_Map.GetMapLevels top 3+ under you).
+- **Data**: `lua tools/att2quests.lua <ATT>/db/Mists/Categories <commit> ZugzugLeveler/data/Quests_Mists.lua -`
+  (lua 5.4+: Mists' Zones.lua has more constants than luajit allows; Holidays.lua's handler fails and is
+  skipped, named on stderr). 14,371 quests. Forever's data still builds byte-identical with luajit.
+- **Transmog** (Export.lua appearance): C_Transmog.GetSlotVisualInfo + C_TransmogCollection.GetSourceInfo
+  -> `slots[x].tmog = { id, name, src }` or `{ hidden = true }`; the page draws that look. **Confirm in
+  game** that it reads away from the transmogrifier. Barber look works unchanged on Mists.
+- **Tests**: `luajit test\harness.lua ZugzugLeveler - mists` (Mists-shaped API, Mists-only tests).
+- **Companion game gate** (games.go, app.js gameGate): every client folder, named from .build.info;
+  with two or more that have the addon the page asks "Which game?" first; Settings > Change game;
+  `?game=_classic_` skips the question. /api/questdb follows the game; /api/prof and /api/danger
+  are {} on later expansions. Wowhead (3D, icons, maps) is still Forever's data set: Mists items
+  will be missing from the 3D character.
+- Fixed on Forever too: `local a, b, c = X and C.try(...)` kept only the first result, so
+  GetNextWaypoint's x, y were always nil in quest log mode.
+
+## Mists: gear, talents, ratings, professions (added 2026-10-19)
+
+Sources checked (licenses read from each project's own files, 2026-10-19): usable are
+AllTheThings (MIT), wowsims/mop (MIT, asks for a visible link: About has it) and RestedXP
+(CC BY-NC-SA). GPL (AtlasLoot MoP, SimulationCraft, every 5.4.8 emulator DB, Azeroth Pilot
+Reloaded) and All Rights Reserved / unlicensed (Questie, QuestieDB, MoP profession guides,
+HandyNotes, ReforgeLite, SpecBisTooltip, Pawn = CC BY-NC-ND) are ideas only. No open MoP 80-90
+leveling route and no open node-spawn data exist.
+
+- **Quest rewards**: att2quests.lua writes `rw` (a quest's i()/s() children) for both games;
+  Mists data is `ns.QuestDBMists` (QuestInfo reads the one for the game). Export.lua
+  E.lookupRewards asks the game for the rewards of `avail` + log quests (GetItemInfo /
+  GET_ITEM_INFO_RECEIVED) and remembers equippable ones with real stats + required level;
+  `availNames` saves their titles.
+- **Page Gear tab on Mists** (games.go expansion -> gear.js setGame): weights from
+  `data/mists/weights.json` (RestedXP MoP leveling 1-84 for 6 classes + wowsims level-90 EP for
+  every spec; the active spec is found in either), items from `data/mists/items.json` (wowsims
+  stats for ATT's reward items; the game's own items win), stat names unified (gear.js canon),
+  no ranged slot (Cata/PaperDollFrame IsRangedSlotShown), armor specialization from 50, Monk and
+  Death Knight, Wowhead links under /mop-classic/. Map: reward quests at their givers.
+- **Talents** (Talents.lua on Mists, data/Talents_Mists.lua): wowsims' preset for the active spec;
+  GetTalentTierInfo for picks (tiers 15-90, DK 56-90: Blizzard's CLASS_TALENT_LEVELS);
+  GetGlyphSocketInfo for glyphs. `/zug talents`, `/zug talents list`, `/zug talents frost default`.
+  Page: Details > Talents. These are level-90 raid builds, not PvP.
+- **Ratings**: Export.lua E.ratings (GetCombatRating / Bonus with the client's CR_* globals, as
+  PaperDollFrame does); page shows them and "1% costs" from `data/mists/ratings.json`
+  (combatratings.txt, columns by CR id; level 90 = hit 340, crit 600, haste 425, mastery 600).
+- **Professions**: Professions.lua saves every orange/yellow/green recipe with materials
+  (`cdb.profRecipes`); the page ranks the cheapest skill-ups at AH prices. Loot.lua records
+  gathering nodes (`db.nodes[map]`, from GameObject loot GUIDs). Farm.lua: `/zug farm <name>`,
+  `farm list`, `farm off` (a looping route through your recorded nodes; keeps your place).
+  Map & Quests has a "gathering" layer.
+- **Data refresh**: `python -I tools/refresh.py --rxp .. --att .. --wowsims <wowsims/mop clone>`
+  (pins.json has wowsims). RestedXP's MoP weights were read from RXP at 8a8dd1ce (not the
+  routes' pin).
+- **Confirm in game**: transmog reading at the transmogrifier (`/zug tmog`), GetTalentTierInfo
+  picks, glyph spells, reward lookups filling `db.items`, node GUIDs (gather once, `/zug farm list`).
+
 ## Verified / not verified
 
 | what | status |

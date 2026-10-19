@@ -17,7 +17,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"time"
 )
 
@@ -82,10 +84,10 @@ func main() {
 	srv := NewServer(paths, *addr)
 	url := "http://" + *addr + "/"
 	handler := srv.Routes(http.FileServer(http.FS(sub)))
-	gameExe := gameExes(paths.clientDir())
 	go func() { // old saves -> new names (migrate.go), then copies of the saves (backup.go), page open or not
 		for {
-			if n := migrateSaves(paths.accountRoot(), anyRunning(gameExe)); n > 0 {
+			p := srv.P() // the game switch (games.go) can change it
+			if n := migrateSaves(p.accountRoot(), anyRunning(gameExes(p.clientDir()))); n > 0 {
 				fmt.Printf("moved %d save(s) from sl0p.leveler to zugzugleveler\n", n)
 			}
 			srv.backup.Take(srv.saveFiles())
@@ -95,7 +97,18 @@ func main() {
 	}()
 
 	if *watch {
-		exes := gameExes(paths.clientDir())
+		// any game with the addon starting opens the page
+		var exes []string
+		for _, g := range listGames(paths.Wow, paths.Client) {
+			if !g.Ready {
+				continue
+			}
+			for _, e := range gameExes(filepath.Join(paths.Wow, g.Client)) {
+				if !slices.Contains(exes, e) {
+					exes = append(exes, e)
+				}
+			}
+		}
 		if len(exes) == 0 {
 			log.Fatalf("no Wow*.exe in %s", paths.clientDir())
 		}

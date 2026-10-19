@@ -1,5 +1,6 @@
 {
- "_note": "Source commits the shipped data was built from (tools/refresh.py). RXPGuides: route file headers; AllTheThings: data/Quests.lua header.",
+ "_note": "Source commits the shipped data was built from (tools/refresh.py). RXPGuides: route file headers; AllTheThings: data/Quests.lua header. wowsims: companion/web/data/mists and data/Talents_Mists.lua (tools/mop_gear.py, tools/mop_talents.py).",
  "rxp": "be2fd72a04ddf343f5d126e9ee3c09bd7c9ba9d9",
- "att": "27a631a3ad7167dce78557645506c857ed8198be"
+ "att": "27a631a3ad7167dce78557645506c857ed8198be",
+ "wowsims": "ec2c6c2552cc7e2a9555bb5eb89144dfb3b9c8d9"
 }

@@ -1,7 +1,6 @@
-## Interface: 16001
-## AllowLoadGameType: forever, camelot
+## Interface: 16001, 50504
 ## Title: zugzug_leveler
-## Notes: Leveling guide for WoW: Forever: RestedXP routes for every race and class with an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
+## Notes: Leveling guide for WoW: Forever (RestedXP routes for every race and class) and Mists of Pandaria Classic (quest log mode): an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
 ## Author: michael-slop
 ## Version: 0.3.0-alpha
 ## Category: Quests & Leveling
@@ -9,6 +8,11 @@
 ## X-Credits: RestedXP Guides (CC BY-NC-SA 4.0), AllTheThings (MIT), the peon after "[Warcraft] - Orc peon" by Northcliffe (CC BY-NC 4.0), his voice by a friend of the project
 ## SavedVariables: ZugzugLevelerDB
 ## SavedVariablesPerCharacter: ZugzugLevelerCharDB
+
+# One TOC for both games, as RXPGuides.toc does: a file tagged
+# [AllowLoadGameType camelot] loads only on Forever, [AllowLoadGameType mists]
+# only on Mists of Pandaria Classic. The routes, talents, professions plan and
+# danger list are Forever's; Mists gets its own quest data and quest log mode.
 
 Compat.lua
 Events.lua
@@ -24,10 +28,12 @@ Assist.lua
 Splits.lua
 Downtime.lua
 MapPath.lua
-data\Danger.lua
-data\Professions.lua
-data\Quests.lua
-data\Talents.lua
+data\Danger.lua [AllowLoadGameType camelot]
+data\Professions.lua [AllowLoadGameType camelot]
+data\Quests.lua [AllowLoadGameType camelot]
+data\Quests_Mists.lua [AllowLoadGameType mists]
+data\Talents.lua [AllowLoadGameType camelot]
+data\Talents_Mists.lua [AllowLoadGameType mists]
 data\Voice.lua
 QuestInfo.lua
 Professions.lua
@@ -35,6 +41,7 @@ Danger.lua
 Flight.lua
 Optimizer.lua
 QuestLog.lua
+Farm.lua
 Coach.lua
 Live.lua
 Model.lua
@@ -48,6 +55,6 @@ Options.lua
 Commands.lua
 Export.lua
 routes\Example.lua
-routes\rxp\routes.xml
+routes\rxp\routes.xml [AllowLoadGameType camelot]
 routes\custom\Planner.lua
 routes\custom\Prefs.lua

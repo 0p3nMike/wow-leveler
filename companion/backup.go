@@ -136,7 +136,7 @@ func (b *Backups) Restore(key, f, name string) error {
 
 // saveFiles: every addon save file, keyed as the backups are filed.
 func (s *Server) saveFiles() map[string]string {
-	accts, chars := s.paths.Scan()
+	accts, chars := s.P().Scan()
 	files := map[string]string{}
 	for a, f := range accts {
 		files[a+"/account"] = f

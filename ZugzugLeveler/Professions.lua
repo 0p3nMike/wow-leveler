@@ -15,6 +15,9 @@
 -- In the profession window the game itself says which recipes still give
 -- skill-ups (C_TradeSkillUI.GetRecipeInfo -> relativeDifficulty: 0 orange,
 -- 1 yellow; GetCraftableCount): the ones you can make right now are listed.
+-- Mists has the older GetNumTradeSkills / GetTradeSkillInfo(i) -> name,
+-- skillType ("optimal" orange, "medium" yellow, "header"), numAvailable
+-- (Mists Blizzard_TradeSkillUI.lua:253).
 -- Forever's NEW recipes are not in the 1-300 plan; the in-window list covers
 -- them because it reads the game.
 
@@ -24,7 +27,8 @@ local C = ns.C
 local P = {}
 ns.Prof = P
 
-local function data() return ns.ProfData or { guides = {}, trainers = {}, items = {} } end
+-- the 1-300 plan is classic's: Forever only
+local function data() return (C.isForever() and ns.ProfData) or { guides = {}, trainers = {}, items = {} } end
 local function on() return ns.db.prof ~= false end
 
 -- { name, rank, max, skillLine } for each profession you have.
@@ -128,10 +132,41 @@ end
 
 P.canSkill = {} -- recipes in the open profession window that give skill-ups now
 
+local function idOf(link) return type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil end
+
+-- one recipe of the open profession window: { name, kind, n, id, mats = { { id, name, need, have } } }
+function P.recipe(i, name, kind, n)
+  local mats = {}
+  for r = 1, (C.try(GetTradeSkillNumReagents, i) or 0) do
+    local rname, _, need, have = C.try(GetTradeSkillReagentInfo, i, r)
+    mats[#mats + 1] = { id = idOf(C.try(GetTradeSkillReagentItemLink, i, r)), name = rname, need = need, have = have }
+  end
+  return { name = name, kind = kind, n = n or 0, id = idOf(C.try(GetTradeSkillItemLink, i)), mats = mats }
+end
+
 function P.scanWindow()
   P.canSkill = {}
-  if not (C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo) then return end
-  local ids = C.try(C_TradeSkillUI.GetAllRecipeIDs) or C.try(C_TradeSkillUI.GetFilteredRecipeIDs) or {}
+  if not (C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo) and GetNumTradeSkills then
+    local line, rank, max = C.try(GetTradeSkillLine)
+    local recipes = {}
+    for i = 1, (C.try(GetNumTradeSkills) or 0) do
+      local name, kind, n = C.try(GetTradeSkillInfo, i)
+      if name and (kind == "optimal" or kind == "medium") and (n or 0) > 0 then
+        P.canSkill[#P.canSkill + 1] = { name = name, orange = kind == "optimal", n = n }
+      end
+      if name and (kind == "optimal" or kind == "medium" or kind == "easy") then
+        recipes[#recipes + 1] = P.recipe(i, name, kind, n)
+      end
+    end
+    -- the page's planner: every recipe that still gives skill, with its materials
+    -- and what you carry (GetTradeSkillReagentInfo -> name, texture, need, have,
+    -- as Mists Blizzard_TradeSkillUI.lua:511 reads it)
+    if type(line) == "string" and #recipes > 0 then
+      ns.cdb.profRecipes = ns.cdb.profRecipes or {}
+      ns.cdb.profRecipes[line] = { rank = rank, max = max, at = C.epoch(), recipes = recipes }
+    end
+  end
+  local ids = C_TradeSkillUI and (C.try(C_TradeSkillUI.GetAllRecipeIDs) or C.try(C_TradeSkillUI.GetFilteredRecipeIDs)) or {}
   for _, id in ipairs(ids) do
     local info = C.try(C_TradeSkillUI.GetRecipeInfo, id)
     if info and info.learned and info.relativeDifficulty and info.relativeDifficulty <= 1 then
@@ -157,8 +192,16 @@ function P.windowLine()
   return "skill-ups you can make now: " .. table.concat(parts, ", ")
 end
 
-ns.On("TRADE_SKILL_SHOW", function() P.scanWindow(); if ns.UI then ns.UI.refresh() end end)
-ns.On("TRADE_SKILL_LIST_UPDATE", function() P.scanWindow(); if ns.UI then ns.UI.refresh() end end)
+local function rescan() P.scanWindow(); if ns.UI then ns.UI.refresh() end end
+-- Mists fills the window's list later: its Blizzard_TradeSkillUI listens for
+-- TRADE_SKILL_UPDATE (Mists/Blizzard_TradeSkillUI.lua:171), so read on that too,
+-- and once more a moment after the window opens
+ns.On("TRADE_SKILL_SHOW", function()
+  rescan()
+  if C_Timer and C_Timer.After then C_Timer.After(1, rescan) end
+end)
+ns.On("TRADE_SKILL_LIST_UPDATE", rescan)
+ns.On("TRADE_SKILL_UPDATE", rescan)
 ns.On("TRADE_SKILL_CLOSE", function() P.canSkill = {}; if ns.UI then ns.UI.refresh() end end)
 ns.On("SKILL_LINES_CHANGED", function() if ns.UI then ns.UI.refresh() end end)
 ns.On("BAG_UPDATE_DELAYED", function() if ns.UI then ns.UI.refresh() end end)

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- no Referer: Wowhead's file host refuses requests that name another site (the 3D viewer adds its stylesheet from there) -->
 <meta name="referrer" content="no-referrer">
-<title>zugzug_leveler</title>
+<title>Zug Zug</title>
 <link rel="stylesheet" href="style.css">
 <link rel="icon" type="image/png" href="peon/icon.png">
 <script type="importmap">{ "imports": { "three": "./vendor/three-0.170.0/three.module.min.js" } }</script>
@@ -13,27 +13,56 @@
 </head>
 <body>
 <header class="top">
-  <div id="helper"></div>
-  <div class="titlecard">
-    <h1 class="brand">zugzug_leveler</h1>
-    <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="character" aria-selected="true">Character</button>
-      <button role="tab" data-tab="world">Map &amp; Quests</button>
-      <button role="tab" data-tab="plan">Plan &amp; Runs</button>
-      <button role="tab" data-tab="about">About</button>
-    </nav>
-  </div>
+  <a class="mark" href="#character" aria-label="Zug Zug: your character"><span class="brand">Zug Zug</span></a>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="character" aria-selected="true">Character</button>
+    <button role="tab" data-tab="world">Map &amp; Quests</button>
+    <button role="tab" data-tab="plan">Plan &amp; Runs</button>
+    <button role="tab" data-tab="about">About</button>
+  </nav>
   <div class="who">
-    <label>Character <select id="charPick"></select></label>
-    <label>Theme <select id="themePick"></select></label>
-    <span id="saved" class="muted"></span>
-    <button id="phoneBtn" class="btn" type="button" aria-expanded="false">On your phone</button>
-    <button id="settingsBtn" class="btn" type="button" aria-expanded="false">Settings</button>
+    <div class="char">
+      <select id="charPick" aria-label="Character"></select>
+      <span id="saved" class="muted"></span>
+    </div>
+    <button id="settingsBtn" class="btn" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
   </div>
 </header>
+<section id="gate" class="gate" hidden aria-labelledby="gateTitle">
+  <h1 id="gateTitle">Which game?</h1>
+  <p class="sub">The page shows one game at a time. Settings has Change game.</p>
+  <div id="gameList" class="gamelist"></div>
+</section>
+<section id="settings" class="settings" hidden aria-label="Settings">
+  <div class="setgrid">
+    <div class="setgroup" id="gameGroup" hidden>
+      <h2>Game</h2>
+      <p class="sub" id="gameNow"></p>
+      <button id="gameBtn" class="btn" type="button">Change game</button>
+    </div>
+    <div class="setgroup">
+      <h2>Look</h2>
+      <label class="field">Theme <select id="themePick"></select></label>
+      <label class="field">Backdrop <select id="backdropPick">
+        <option value="flames">Flames</option>
+        <option value="rain">Rain</option>
+        <option value="plasma">Plasma</option>
+        <option value="starfield">Starfield</option>
+        <option value="off">Off</option>
+      </select></label>
+      <p class="sub">The backdrop is panefx's, in the theme's colours (About has more).</p>
+    </div>
+    <div class="setgroup" id="phoneGroup">
+      <h2>On your phone</h2>
+      <p class="sub">No second screen? Open this page on a phone on the same Wi-Fi.</p>
+      <button id="phoneBtn" class="btn" type="button" aria-expanded="false" aria-controls="phone">Pair a phone</button>
+    </div>
+    <div class="setgroup wide" id="settingsBody"></div>
+  </div>
+</section>
 <section id="phone" class="phone" hidden></section>
-<section id="settings" class="settings" hidden></section>
 <main id="view"></main>
+<aside id="helper"></aside>
 <footer class="foot">
   <p>The page shows what the game last saved (on /reload, logout, or the window's Sync). Not affiliated with Blizzard Entertainment. Credits, licenses and help: <a href="#about">About</a>.</p>
 </footer>

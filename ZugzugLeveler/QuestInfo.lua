@@ -7,6 +7,9 @@
 --   race      races: race IDs (UnitRace's third value)
 --   class     c: class IDs (UnitClass's third value)
 --   locked    any altQuests turned in
+--   past      a breadcrumb whose nextQuests (nx) you took or did (ATT's
+--             LockedAsBreadcrumb: done, or itself locked; taking one counts
+--             too, as ATT warns when you accept it, Quests.lua:1185)
 --   prereqs   sourceQuests: sqreq of them (else all) done; one you are on, a
 --             breadcrumb, or one that is not for you does not count as missing
 --   level     lvl: minimum, or {min, max}
@@ -18,7 +21,13 @@ local C = ns.C
 local QI = {}
 ns.QInfo = QI
 
-local function DB() return ns.QuestDB or {} end
+-- data/Quests.lua sets ns.QuestDB (Forever), data/Quests_Mists.lua ns.QuestDBMists:
+-- each game reads its own, even if both files were loaded
+local function DB()
+  if not C.isForever() and ns.QuestDBMists then return ns.QuestDBMists end
+  return ns.QuestDB or {}
+end
+QI.db = DB
 function QI.get(q) return q and DB()[q] end
 
 local FACTION = { Horde = 1, Alliance = 2 }
@@ -30,19 +39,15 @@ function QI.me()
   return faction, race, class, level
 end
 
--- Done quests: one C_QuestLog.GetAllCompletedQuestIDs call for a whole pass
--- (as Questie and ATT do) instead of thousands of single lookups.
+-- Done quests: one C.completedSet call for a whole pass (as Questie and ATT
+-- do) instead of thousands of single lookups.
 local doneSet
 local function turned(q)
   if doneSet then return doneSet[q] == true end
   return C.isTurnedIn(q)
 end
 local function withDone(fn)
-  local all = C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs and C.try(C_QuestLog.GetAllCompletedQuestIDs)
-  if type(all) == "table" then
-    doneSet = {}
-    for _, q in ipairs(all) do doneSet[q] = true end
-  end
+  doneSet = C.completedSet()
   local ok, out = pcall(fn)
   doneSet = nil
   if not ok then error(out) end
@@ -74,6 +79,14 @@ function QI.blocked(q)
   if nf then return { kind = "never", why = nf } end
   for _, a in ipairs(e.alt or {}) do
     if turned(a) then return { kind = "never", why = "alt", q = a } end
+  end
+  if e.bc then
+    for _, n in ipairs(e.nx or {}) do
+      local ne = QI.get(n)
+      local locked = turned(n) or C.isOnQuest(n)
+      for _, a in ipairs(not locked and ne and ne.alt or {}) do if turned(a) then locked = true end end
+      if locked then return { kind = "never", why = "past", q = n } end
+    end
   end
   local lvl, max = e.lvl, nil
   if type(lvl) == "table" then lvl, max = lvl[1], lvl[2] end
@@ -116,6 +129,8 @@ function QI.say(b, steps)
     return ("it needs level %d (you are %s)"):format(b.lvl, tostring(level or "?"))
   elseif b.why == "alt" then
     return ("you did %s, which rules this one out"):format(QI.title(b.q, steps))
+  elseif b.why == "past" then
+    return ("it only leads to %s, which you already have or did"):format(QI.title(b.q, steps))
   elseif b.why == "toohigh" then
     return ("it is only offered up to level %d"):format(b.max)
   end

@@ -79,10 +79,56 @@ function E.snapshot()
     map = map, x = x, y = y, at = C.epoch(),
   }
   if ns.Prof then ns.cdb.profSnap = ns.Prof.mine() end
-  -- quests you could pick up right now (QuestInfo.lua): the page pins their givers
-  if ns.QInfo then ns.cdb.avail = ns.QInfo.availableAll(600) end
+  E.avail()
   E.gear()
 end
+
+-- Quests you could pick up right now (QuestInfo.lua): the page pins their
+-- givers and weighs their rewards. Their names when the game has them
+-- (C.questTitle), and their reward items looked up (E.lookupRewards).
+--   ZugzugLevelerCharDB.avail = { questID ... }, availNames = { [questID] = title }
+function E.avail()
+  if not ns.QInfo then return end
+  ns.cdb.avail = ns.QInfo.availableAll(600)
+  local names = {}
+  for _, q in ipairs(ns.cdb.avail) do names[q] = C.questTitle(q) end
+  ns.cdb.availNames = names
+  E.lookupRewards()
+end
+
+-- The reward items (AllTheThings' rw, data/Quests*.lua) of the quests you can
+-- take or have, asked of the game itself: C_Item.GetItemInfo(id) answers from
+-- the client's cache or asks the server, which answers with
+-- GET_ITEM_INFO_RECEIVED(itemID, success) (5.5.4 and 1.60.1 event lists).
+-- Equippable ones are remembered (E.remember) with the game's own stats and
+-- required level, so the page can say which quest gives an upgrade before you
+-- ever see its reward window. Up to 80 asks per pass; each item once a session.
+local asked = {}
+function E.lookupRewards()
+  if not (ns.QInfo and C_Item) then return end
+  local items, n = ns.db.items or {}, 0
+  local qs = {}
+  for _, q in ipairs(ns.cdb.avail or {}) do qs[#qs + 1] = q end
+  for _, q in ipairs(C.questLogIDs()) do qs[#qs + 1] = q end
+  for _, q in ipairs(qs) do
+    local e = ns.QInfo.get(q)
+    for _, id in ipairs(e and e.rw or {}) do
+      if n >= 80 then return end
+      if not items[id] and asked[id] == nil then
+        n = n + 1
+        local _, link = C.try(C_Item.GetItemInfo, id)
+        if link then asked[id] = true; E.remember(link) else asked[id] = false end -- false: the server answers later
+      end
+    end
+  end
+end
+ns.On("GET_ITEM_INFO_RECEIVED", function(id, ok)
+  if asked[id] ~= false then return end
+  asked[id] = true
+  if not ok then return end
+  local _, link = C.try(C_Item.GetItemInfo, id)
+  if link then E.remember(link) end
+end)
 
 -- ------------------------------------------------------------------ gear
 
@@ -98,7 +144,7 @@ function E.item(link)
   local id = C.try(C_Item.GetItemInfoInstant, link) or tonumber(link:match("item:(%d+)"))
   if not id then return nil end
   local stats = {}
-  for k, v in pairs(C.try(C_Item.GetItemStats, link) or {}) do
+  for k, v in pairs(C.try(C_Item.GetItemStats, link) or C.try(GetItemStats, link) or {}) do
     if type(k) == "string" and type(plain(v)) == "number" then stats[k] = v end
   end
   return { id = id, name = plain(name), q = plain(q), ilvl = plain(ilvl), req = plain(req), type = plain(typ),
@@ -112,7 +158,7 @@ end
 -- returns { lines = { { leftText, rightText } } } (Blizzard_SharedXMLGame
 -- TooltipDataHandler.lua iterates tooltipData.lines the same way).
 function E.tipLines(link)
-  local data = C_TooltipInfo and C.try(C_TooltipInfo.GetHyperlink, link)
+  local data = C.tooltip(link)
   local out = {}
   for _, l in ipairs(type(data) == "table" and data.lines or {}) do
     local left, right = plain(l.leftText), plain(l.rightText)
@@ -133,7 +179,7 @@ local function hex(c)
   return string.format("%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
 end
 function E.tipFull(link)
-  local data = C_TooltipInfo and C.try(C_TooltipInfo.GetHyperlink, link)
+  local data = C.tooltip(link)
   local out = {}
   for _, l in ipairs(type(data) == "table" and data.lines or {}) do
     local left, right = plain(l.leftText), plain(l.rightText)
@@ -156,8 +202,29 @@ local function spec()
   for i = 1, n do
     -- the arguments Camelot's PaperDollFrame_SetLevel passes; before a spec can
     -- be chosen the name comes back empty
-    local _, name, _, _, role, _, points = C.try(S.GetSpecializationInfo, i, false, false, nil, sex)
-    out.trees[i] = { name = plain(name), role = plain(role), points = plain(points) or 0 }
+    local id, name, _, _, role, _, points = C.try(S.GetSpecializationInfo, i, false, false, nil, sex)
+    if not plain(name) then
+      -- Mists saved an empty spec at login (talent data loads later): the
+      -- class's specs by number, GetSpecializationInfoForClassID(classID, i)
+      -- -> id, name, description, icon, role (in both 1.60.1 and 5.5.4 lists)
+      local id2, name2, _, _, role2 = C.try(GetSpecializationInfoForClassID, classID, i)
+      id, name, role = id or id2, name2, role or role2
+    end
+    out.trees[i] = { name = plain(name), role = plain(role), points = plain(points) or 0, id = plain(id) }
+  end
+  -- Mists: the column picked in each of the six talent tiers (0 = none) and the
+  -- glyphs' spells (GetTalentTierInfo / GetGlyphSocketInfo, as Talents.lua reads them)
+  if not C.isForever() and GetTalentTierInfo then
+    local grp = C.try(S.GetActiveSpecGroup) or 1
+    out.tiers, out.glyphs = {}, {}
+    for tier = 1, 6 do
+      local _, sel = C.try(GetTalentTierInfo, tier, grp, false, "player")
+      out.tiers[tier] = plain(sel) or 0
+    end
+    for i = 1, (C.try(GetNumGlyphSockets) or 0) do
+      local _, _, _, spell = C.try(GetGlyphSocketInfo, i, grp)
+      if plain(spell) then out.glyphs[#out.glyphs + 1] = spell end
+    end
   end
   return out
 end
@@ -166,6 +233,16 @@ end
 -- each sits under, so the site knows what this character can wear.
 local function skills()
   local S, out, head = C_SkillInfo, {}, nil
+  if not (S and S.GetNumSkillLines) and GetNumSkillLines then
+    -- Mists: skillName, isHeader, isExpanded, skillRank, numTempPoints,
+    -- skillModifier, skillMaxRank (Classic SkillFrame.lua:26)
+    for i = 1, (C.try(GetNumSkillLines) or 0) do
+      local name, isHeader, _, rank, _, _, max = C.try(GetSkillLineInfo, i)
+      if isHeader then head = plain(name)
+      elseif plain(name) then out[#out + 1] = { name = name, rank = plain(rank), max = plain(max), head = head } end
+    end
+    return out
+  end
   if not (S and S.GetNumSkillLines) then return out end
   for i = 1, (C.try(S.GetNumSkillLines) or 0) do
     local s = C.try(S.GetSkillLineInfo, i)
@@ -177,20 +254,151 @@ end
 
 local STAT = { "str", "agi", "sta", "int", "spi" } -- UnitStat's index order
 -- The character frame's slot buttons (Camelot PaperDollFrame.xml: Character<Name>Slot),
--- looked up by name with C_PaperDollInfo.GetInventorySlotInfo, as the frame does.
+-- looked up by name with C_PaperDollInfo.GetInventorySlotInfo, as the frame does
+-- (GetInventorySlotInfo on Mists, Cata PaperDollFrame.lua:2476).
 local SLOTS = { "Head", "Neck", "Shoulder", "Back", "Chest", "Shirt", "Tabard", "Wrist",
   "Hands", "Waist", "Legs", "Feet", "Finger0", "Finger1", "Trinket0", "Trinket1",
   "MainHand", "SecondaryHand", "Ranged" }
 
+-- The look a slot shows when it is transmogged, for the page's 3D character:
+-- C_Transmog.GetSlotVisualInfo({ slotID, type = 0 Appearance, modification =
+-- 0 Main }) (the table TransmogLocationMixin:GetData builds, Blizzard_TransmogShared
+-- .lua:604) -> appliedSourceID, 0 when not transmogged (Constants.Transmog.NoTransmogID);
+-- C_TransmogCollection.GetSourceInfo(source) -> itemID. The Collections window
+-- reads it away from the transmogrifier too. nil: the item's own look.
+local function appearance(slot)
+  if not (C_Transmog and C_Transmog.GetSlotVisualInfo) then return nil end
+  local v = C.try(C_Transmog.GetSlotVisualInfo, { slotID = slot, type = 0, modification = 0 })
+  if type(v) ~= "table" then return nil end
+  if plain(v.isHideVisual) then return { hidden = true } end
+  local src = plain(v.appliedSourceID)
+  if not src or src == 0 or src == plain(v.baseSourceID) then return nil end
+  local info = C_TransmogCollection and C.try(C_TransmogCollection.GetSourceInfo, src)
+  local id = type(info) == "table" and plain(info.itemID)
+  if not id then return nil end
+  return { id = id, name = plain(info.name), src = src }
+end
+
+-- Mists of Pandaria Classic keeps transmog in outfits (C_TransmogOutfitInfo,
+-- the 5.5.4 export), and GetSlotVisualInfo above can say "none" while you wear
+-- one. The outfit slots are read the way Blizzard's transmog window does
+-- (Blizzard_TransmogTemplates.lua:280-285): GetViewedOutfitSlotInfo(outfit slot,
+-- 0 Appearance, weapon option) -> displayType (0 unassigned, 1 assigned, 2 your
+-- gear's own look, 3 hidden, 4 disabled), transmogID = a source;
+-- GetSourceItemID(source) -> itemID. Outfit slot from the inventory slot with
+-- GetTransmogOutfitSlotFromInventorySlot(slot - 1), as TransmogUtil.CreateTransmogLocation.
+-- "Viewed" is the outfit the transmog window shows, which it sets to the one you
+-- wear when it opens (Blizzard_Transmog.lua:516): read at the window only.
+local function outfitLook(slot)
+  local O = C_TransmogOutfitInfo
+  if not (O and O.GetViewedOutfitSlotInfo and O.GetTransmogOutfitSlotFromInventorySlot) then return nil end
+  local ts = plain(C.try(O.GetTransmogOutfitSlotFromInventorySlot, slot - 1))
+  if not ts then return nil end
+  local opt = plain(C.try(O.GetEquippedSlotOptionFromTransmogSlot, ts)) or 0
+  local v = C.try(O.GetViewedOutfitSlotInfo, ts, 0, opt)
+  if type(v) ~= "table" then return nil end
+  local shown = plain(v.displayType)
+  if shown == 3 then return { hidden = true } end
+  if shown ~= 1 then return false end -- your gear's own look
+  local src = plain(v.transmogID)
+  local id = src and src ~= 0 and plain(C.try(C_TransmogCollection.GetSourceItemID, src))
+  if not id then return false end
+  return { id = id, name = plain(C.try(C_Item.GetItemNameByID, id)), src = src }
+end
+
+-- Your transmog, read at the transmogrifier:
+--   ZugzugLevelerCharDB.tmog = { at, slots = { Head = { id, name, src } | { hidden = true } | false } }
+-- false = that slot shows the item you wear. The page draws these looks.
+function E.tmog(quiet)
+  local info = (C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo) or GetInventorySlotInfo
+  local out, n = {}, 0
+  for _, name in ipairs(SLOTS) do
+    local slot = C.try(info, name .. "Slot")
+    -- whichever way reports a transmog (outfit window or the older wardrobe);
+    -- false when one says "your own look"; nil when neither answers
+    local o = slot and outfitLook(slot)
+    local a = slot and appearance(slot)
+    local look = (type(o) == "table" and o) or a or o
+    if look ~= nil then
+      out[name] = look
+      if look then n = n + 1 end
+    end
+  end
+  if not next(out) then return end
+  ns.cdb.tmog = { at = C.epoch(), slots = out }
+  if not quiet then C.print("your transmog is saved for the companion page (%d slots). Sync or /reload to show it.", n) end
+end
+local function atTransmog() return C_Transmog and C.try(C_Transmog.IsAtTransmogNPC) end
+-- Mists opens transmog two ways (Mists UIParent.lua:1152: TRANSMOGRIFY_OPEN shows
+-- the older wardrobe; PlayerInteractionFrameManager.lua:117: interaction type 24,
+-- Transmogrifier, shows the outfit window). Read after the window has picked the
+-- outfit you wear, and again a moment later in case it was still loading.
+local function readSoon()
+  if not (C_Timer and C_Timer.After) then E.tmog(); return end
+  C_Timer.After(0.5, function() E.tmog(true) end)
+  C_Timer.After(2, function() E.tmog() end)
+end
+ns.On("TRANSMOGRIFY_OPEN", readSoon)
+ns.On("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(kind)
+  local want = Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.Transmogrifier or 24
+  if kind == want then readSoon() end
+end)
+ns.On("TRANSMOGRIFY_SUCCESS", function() if atTransmog() then E.tmog(true) end end)
+ns.On("TRANSMOG_DISPLAYED_OUTFIT_CHANGED", function() if atTransmog() then E.tmog(true) end end)
+
+-- /zug tmog: what the game says about each slot's look, both ways, to check the above
+function E.tmogDebug()
+  local info = (C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo) or GetInventorySlotInfo
+  local O = C_TransmogOutfitInfo
+  C.print("transmog: at the transmogrifier %s, active outfit %s, viewed outfit %s", tostring(atTransmog()),
+    tostring(O and C.try(O.GetActiveOutfitID)), tostring(O and C.try(O.GetCurrentlyViewedOutfitID)))
+  for _, name in ipairs(SLOTS) do
+    local slot = C.try(info, name .. "Slot")
+    if slot then
+      local v = C_Transmog and C.try(C_Transmog.GetSlotVisualInfo, { slotID = slot, type = 0, modification = 0 })
+      local ts = O and plain(C.try(O.GetTransmogOutfitSlotFromInventorySlot, slot - 1))
+      local w = ts and C.try(O.GetViewedOutfitSlotInfo, ts, 0, plain(C.try(O.GetEquippedSlotOptionFromTransmogSlot, ts)) or 0)
+      C.print("  %s: visual base %s applied %s hidden %s | outfit slot %s shown %s transmog %s", name,
+        tostring(type(v) == "table" and plain(v.baseSourceID)), tostring(type(v) == "table" and plain(v.appliedSourceID)),
+        tostring(type(v) == "table" and plain(v.isHideVisual)), tostring(ts),
+        tostring(type(w) == "table" and plain(w.displayType)), tostring(type(w) == "table" and plain(w.transmogID)))
+    end
+  end
+end
+
+-- Mists: your ratings and what they give, as the character frame works them
+-- out (Cata/PaperDollFrame.lua: GetCombatRatingBonus(CR_HIT_SPELL) +
+-- GetSpellHitModifier() for spell hit, and so on). CR_* are the client's own
+-- globals (CR_HIT_SPELL = 8, CR_HASTE_SPELL = 20, CR_MASTERY = 26 ...).
+--   { hit = { rating, pct }, crit, haste, mastery, expertise, meleeHit, meleeCrit, meleeHaste }
+function E.ratings()
+  local function rated(cr) return cr and plain(C.try(GetCombatRating, cr)) or nil end
+  local function bonus(cr) return cr and plain(C.try(GetCombatRatingBonus, cr)) or nil end
+  local crit = 0
+  for school = 2, 7 do crit = math.max(crit, plain(C.try(GetSpellCritChance, school)) or 0) end
+  local out = {
+    hit = { rated(CR_HIT_SPELL), (bonus(CR_HIT_SPELL) or 0) + (plain(C.try(GetSpellHitModifier)) or 0) },
+    crit = { rated(CR_CRIT_SPELL), crit },
+    haste = { rated(CR_HASTE_SPELL), plain(C.try(UnitSpellHaste, "player")) },
+    mastery = { rated(CR_MASTERY), plain(C.try(GetMasteryEffect)) },
+    expertise = { rated(CR_EXPERTISE), plain(C.try(GetExpertise)) },
+    meleeHit = { rated(CR_HIT_MELEE), (bonus(CR_HIT_MELEE) or 0) + (plain(C.try(GetHitModifier)) or 0) },
+    meleeCrit = { rated(CR_CRIT_MELEE), plain(C.try(GetCritChance)) },
+    meleeHaste = { rated(CR_HASTE_MELEE), plain(C.try(GetMeleeHaste)) },
+  }
+  return out
+end
+
 function E.gear()
   local g = { slots = {}, bags = {}, at = C.epoch() }
-  local info = C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo
+  local info = (C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo) or GetInventorySlotInfo
   for _, name in ipairs(SLOTS) do
     local slot = C.try(info, name .. "Slot")
     local it = slot and E.item(C.try(GetInventoryItemLink, "player", slot))
     if it then
       local cur, max = C.try(GetInventoryItemDurability, slot)
       it.dur, it.durMax = plain(cur), plain(max)
+      it.tmog = appearance(slot)
       g.slots[name] = it
     end
   end
@@ -210,6 +418,7 @@ function E.gear()
   local sp = 0
   for school = 2, 7 do sp = math.max(sp, plain(C.try(GetSpellBonusDamage, school)) or 0) end
   g.stats.spell = sp
+  if not C.isForever() then g.stats.r = E.ratings() end
   g.ilvl = plain(select(2, C.try(GetAverageItemLevel)))
   g.money = plain(C.try(GetMoney))
   g.spec, g.skills = spec(), skills()
@@ -268,6 +477,41 @@ function E.questFrame()
   ns.db.quests[q] = rec
 end
 
+-- Your look (skin, face, hair, ...), for the companion page's 3D character.
+-- The game tells it at a barber: C_BarberShop.GetAvailableCustomizations()
+-- (BarberShopDocumentation, 1.60.1 export) lists every option with the choice
+-- you wear now (currentChoiceIndex), which is what Blizzard's barber window
+-- reads to show you (Blizzard_BarberShopUI.lua). Sitting down is enough;
+-- nothing is changed. Read again when a new look is bought. The option and
+-- choice numbers are the game's ChrCustomization ones, the same the page's
+-- model viewer takes. A druid's forms are categories of their own: skipped.
+--   ZugzugLevelerCharDB.look = { at, options = { { o = optionID, c = choiceID, name, choice } } }
+function E.look()
+  local cats = C_BarberShop and C.try(C_BarberShop.GetAvailableCustomizations)
+  if type(cats) ~= "table" or #cats == 0 then return end
+  local out = {}
+  for _, cat in ipairs(cats) do
+    if not plain(cat.spellShapeshiftFormID) then
+      for _, o in ipairs(cat.options or {}) do
+        local k = plain(o.currentChoiceIndex)
+        local ch = k and o.choices and o.choices[k]
+        if ch and plain(ch.id) and plain(o.id) then
+          out[#out + 1] = { o = o.id, c = ch.id, name = plain(o.name), choice = plain(ch.name) }
+        end
+      end
+    end
+  end
+  if #out == 0 then return end
+  ns.cdb.look = { at = C.epoch(), options = out }
+  C.print("your look is saved for the companion page's 3D character (%d features). Sync or /reload to show it.", #out)
+end
+ns.On("BARBER_SHOP_OPEN", function()
+  -- after the barber window has built the character (its own code warns that an
+  -- early call returns nothing)
+  if C_Timer and C_Timer.After then C_Timer.After(0.5, E.look) else E.look() end
+end)
+ns.On("BARBER_SHOP_APPEARANCE_APPLIED", function() E.look() end)
+
 -- A quest's own words when a quest giver offers it, before it is in your log
 -- (GetQuestText / GetObjectiveText at QUEST_DETAIL, as Blizzard's QuestInfo.lua
 -- reads them), with who offered it and where: the companion page shows them
@@ -304,6 +548,10 @@ function E.merchant()
     local id = E.remember(C.try(GetMerchantItemLink, i))
     if id then
       local info = C_MerchantFrame and C.try(C_MerchantFrame.GetItemInfo, i)
+      if not info and GetMerchantItemInfo then -- Mists: name, texture, price, ... (TBC MerchantFrame.lua:203)
+        local _, _, price = C.try(GetMerchantItemInfo, i)
+        info = { price = price }
+      end
       local list = ns.db.vendors[id] or {}
       ns.db.vendors[id] = list
       local known = false
@@ -331,14 +579,13 @@ end
 
 -- The quest log as the site's Quests tab shows it:
 --   ZugzugLevelerCharDB.questLog = { { q, title, level, zone, done, objs = { { text, have, need, done } } } }
--- C_QuestLog.GetInfo (QuestInfo: title, questID, level, isHeader; a header's
--- title is the zone) and GetQuestObjectives (QuestObjectiveInfo), 1.60.1 export.
+-- C.questLog rows (title, questID, level, isHeader; a header's title is the
+-- zone) and GetQuestObjectives (QuestObjectiveInfo), 1.60.1 export.
 function E.questLog()
   local out, zone = {}, nil
-  if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries) then return end
-  for i = 1, (C.try(C_QuestLog.GetNumQuestLogEntries) or 0) do
-    local info = C.try(C_QuestLog.GetInfo, i)
-    if info and info.isHeader then zone = plain(info.title)
+  for _, info in ipairs(C.questLog()) do
+    local i = info.i
+    if info.isHeader then zone = plain(info.title)
     elseif info and plain(info.questID) and info.questID > 0 then
       local objs = {}
       for _, o in ipairs(C.objectives(info.questID)) do
@@ -347,7 +594,7 @@ function E.questLog()
       -- the quest's own words, as the game's quest log shows them
       -- (GetQuestLogQuestText(questLogIndex): description, objectives text;
       -- Blizzard_UIPanels_Game QuestMapFrame.lua reads it the same way)
-      local desc, ask = C.try(GetQuestLogQuestText, i)
+      local desc, ask = C.questText(i)
       desc, ask = plain(desc), plain(ask)
       out[#out + 1] = { q = info.questID, title = plain(info.title), level = plain(info.level), zone = zone,
         done = C.isComplete(info.questID), objs = objs,
@@ -380,6 +627,10 @@ ns.On("PLAYER_EQUIPMENT_CHANGED", soon)
 ns.On("BAG_UPDATE_DELAYED", soon)
 ns.On("ACTIVE_TALENT_GROUP_CHANGED", soon)
 ns.On("PLAYER_TALENT_UPDATE", soon)
+ns.On("PLAYER_SPECIALIZATION_CHANGED", soon)
+-- turning in or picking up a quest changes what you can take next
+local availSoon = settle(function() E.avail() end)
+ns.On("QUEST_ACCEPTED", availSoon)
 ns.On("PLAYER_MONEY", E.money)
 -- Quests this character has turned in, so the site never suggests a reward
 -- from one that is done: ZugzugLevelerCharDB.turnedIn[questID] = time.
@@ -388,6 +639,7 @@ ns.On("QUEST_TURNED_IN", function(q)
   if not q then return end
   ns.cdb.turnedIn = ns.cdb.turnedIn or {}
   ns.cdb.turnedIn[q] = C.epoch()
+  availSoon()
 end)
 ns.On("QUEST_DETAIL", E.questFrame, true) -- before Assist accepts and the frame closes
 ns.On("QUEST_DETAIL", E.questText, true)

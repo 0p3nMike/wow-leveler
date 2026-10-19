@@ -24,9 +24,27 @@ local DEFAULT_R = 15
 local function cdb() return ns.cdb end
 
 function E.route() return Route.Get(cdb().route) end
+
+-- An optimizer plan names steps by number. It is saved with the character, but
+-- quest log mode's steps are not (QuestLog.lua builds them a moment after
+-- login): after a /reload the plan pointed past an empty route and every
+-- reader indexed a missing step (Engine.lua:122, MapPath.lua:35 on Mists,
+-- 2026-10-18). A plan naming a step the route does not have is dropped.
+local function planOk()
+  local db = cdb()
+  local p = db.plan
+  if not p then return end
+  local r = E.route()
+  local steps = r and r.steps or {}
+  for _, j in ipairs(p.list or {}) do
+    if not steps[j] then db.plan = nil; return end
+  end
+end
+
 -- The step on screen: the head of an optimizer plan when one is active
 -- (Optimizer.lua), else the route pointer.
 function E.index()
+  planOk()
   local p = cdb().plan
   if p and p.list[1] then return p.list[1] end
   return cdb().step or 1
@@ -35,6 +53,7 @@ end
 -- Upcoming step indices in the order they will be shown: the plan first,
 -- then the route from after it. Set-aside and finished steps are left out.
 function E.upcoming(n)
+  planOk()
   local r, db = E.route(), cdb()
   local out = {}
   if not r then return out end
@@ -339,6 +358,7 @@ end
 function E.evaluate()
   local r = E.route()
   if not r then return end
+  planOk()
   local db = cdb()
   -- an optimizer plan: finish from its head; when it runs out, the route
   -- pointer jumps past the window (every step in it was in the plan)
