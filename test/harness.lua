@@ -1,19 +1,22 @@
 -- harness.lua -- run the REAL addon files under Lua 5.1 / luajit against a
 -- fake Forever API, drive game events, and check what the addon does.
 --
---   luajit test/harness.lua <path to ZugzugLeveler/> [SavedVariables dump | -] [camelot | mists]
+--   luajit test/harness.lua <path to ZugzugLeveler/> [SavedVariables dump | -] [camelot | mists | era]
 --
 -- The 3rd argument is the game type the TOC's [AllowLoadGameType ...] tags are
 -- read for: camelot (Forever, the default, every test) or mists (Mists of
 -- Pandaria Classic: the fake API is reshaped to 5.5.4's and only the Mists
--- tests run; they stop before the Forever ones).
+-- tests run; they stop before the Forever ones), or era (Classic Era 1.15.9 on
+-- a Hardcore realm, TOC tag vanilla: the API reshaped to wow-ui-source
+-- classic_era's, only the Era tests run).
 --
 -- Same idea as ghoul's addon/test/harness.lua: in game every handler runs
 -- inside pcall (Events.lua), so a typo never errors there -- it just quietly
 -- does nothing. Here the bus's error print is turned into a failure.
 
-local dir = assert(arg[1], "usage: harness.lua <addon dir> [dump | -] [camelot | mists]")
+local dir = assert(arg[1], "usage: harness.lua <addon dir> [dump | -] [camelot | mists | era]")
 local GAME = arg[3] or "camelot"
+local TAG = GAME == "era" and "vanilla" or GAME -- the TOC's name for the game
 if arg[2] == "-" then arg[2] = nil end
 
 -- ------------------------------------------------------------ fake world
@@ -206,7 +209,7 @@ C_Container = {
 -- Gethe/wow-ui-source branch classic): the old quest log globals instead of
 -- most of C_QuestLog, no C_QuestLine / C_TooltipInfo / C_PaperDollInfo /
 -- C_TradeSkillUI / C_SkillInfo / C_Minimap, no user waypoints.
-if GAME == "mists" then
+if GAME == "mists" or GAME == "era" then
   local HEADER = "Twilight Highlands"
   local function row(i) if i == 1 then return nil end return logList()[i - 1] end -- row 1 is a zone header
   C_QuestLog = {
@@ -234,6 +237,21 @@ if GAME == "mists" then
   C_Map.CanSetUserWaypointOnMap, C_Map.SetUserWaypoint, C_Map.GetUserWaypoint, C_Map.ClearUserWaypoint = nil, nil, nil, nil
 end
 
+-- ------------------------------------------------------- Classic Era API
+-- 1.15.9 (wow-ui-source classic_era, Blizzard_APIDocumentationGenerated): the
+-- same old quest log globals as Mists, but no IsQuestComplete /
+-- GetQuestsCompleted proven, no GetTaxiMapID; QUEST_ACCEPTED is (questIndex,
+-- questId); Era's project constants; a Hardcore realm (W.hc).
+if GAME == "era" then
+  IsQuestComplete, GetQuestsCompleted = nil, nil
+  WOW_PROJECT_CLASSIC, WOW_PROJECT_ID = 2, 2
+  W.hc = true
+  C_GameRules = { IsHardcoreActive = function() return W.hc end }
+  C_PlayerInfo = { IsSelfFoundActive = function() return false end }
+  W.prof = 0
+  function debugprofilestop() return W.prof end
+end
+
 -- ------------------------------------------------------------ load addon
 local ns = {}
 local toc = assert(io.open(dir .. "/ZugzugLeveler.toc"))
@@ -255,7 +273,7 @@ for line in toc:lines() do
   line = line:gsub("\r", "")
   local file, games = line:match("^(.-)%s*%[AllowLoadGameType%s+([^%]]*)%]%s*$")
   local wanted = not games
-  for g in (games or ""):gmatch("[^,%s]+") do if g == GAME then wanted = true end end
+  for g in (games or ""):gmatch("[^,%s]+") do if g == TAG then wanted = true end end
   if line ~= "" and not line:match("^#") and wanted then load(file or line) end
 end
 toc:close()
@@ -282,7 +300,12 @@ local function hasCall(name, a)
   return false
 end
 local function resetCalls() W.calls = {} end
-local function accept(q, title) W.log[q] = { complete = false, title = title or ("Q" .. q) }; fire("QUEST_ACCEPTED", q); fire("QUEST_LOG_UPDATE") end
+local function accept(q, title)
+  W.log[q] = { complete = false, title = title or ("Q" .. q) }
+  -- Era's QUEST_ACCEPTED is (questIndex, questId); Forever's (questId)
+  if GAME == "era" then fire("QUEST_ACCEPTED", 7, q) else fire("QUEST_ACCEPTED", q) end
+  fire("QUEST_LOG_UPDATE")
+end
 local function finishObj(q) W.log[q].complete = true; fire("QUEST_LOG_UPDATE") end
 local function turnin(q, xp)
   W.log[q] = nil; W.turnedIn[q] = true
@@ -583,6 +606,78 @@ if GAME == "mists" then
   end
 
   zug("why"); zug("way 50 50"); tick(4)
+  finish()
+end
+
+-- ============================================ Classic Era / Hardcore (era)
+if GAME == "era" then
+  local C, E = ns.C, ns.Engine
+  check(C.game() == "era" and C.hardcoreRealm(), "Classic Era, a Hardcore realm")
+  local n = 0
+  for _ in pairs(ns.QuestDBEra or {}) do n = n + 1 end
+  check(n > 3000, "Era quest data loaded (" .. n .. " quests)")
+  check(ns.QInfo.db() == ns.QuestDBEra, "Era reads its own quest data")
+  -- with Forever's and Mists' files loaded as well (a client ignoring a tag), none of them is used
+  for _, f in ipairs({ "data/Quests.lua", "data/Quests_Mists.lua", "routes/rxp/routes.xml" }) do load(f) end
+  check(ns.QInfo.db() == ns.QuestDBEra, "Era's quest data even with the others loaded")
+  local names = {}
+  for _, r in ipairs(ns.Route.List()) do names[r.name] = true end
+  check(names["RXP Survival Human Warrior"] and names["RXP Era Human Warrior"], "both Era routes for a Human Warrior")
+  check(not names["RXP Human Warrior"] and not names["RXP Survival Undead Mage"], "no Forever route, no other race's or class's")
+  check(ns.Route.Get("RXP Survival Human Warrior").hardcore == true and not ns.Route.Get("RXP Era Human Warrior").hardcore,
+    "the Survival route is marked hardcore, the speedrun not")
+  local first, other = ns.Coach.routeFor()
+  check(first == "RXP Survival Human Warrior" and other == "RXP Era Human Warrior", "Hardcore realm: Survival offered first")
+  W.hc = false
+  first, other = ns.Coach.routeFor()
+  check(first == "RXP Era Human Warrior" and other == "RXP Survival Human Warrior", "a normal Era realm: the speedrun first")
+  check(not E.hardcore(), "not hardcore off a Hardcore realm, on no route")
+  zug("route use RXP Survival Human Warrior")
+  check(E.hardcore(), "following RestedXP's hardcore guide counts as hardcore (RXP GuideWindow.lua)")
+  W.hc = true
+
+  -- shared classic data: talents (Survival builds), danger list, profession plan
+  W.level = 12
+  local g = ns.Talents.guide()
+  check(g and g.hc == true, "a Survival talent build on Hardcore (" .. tostring(g and g.name) .. ")")
+  check(next(ns.Talents.guides()) ~= nil, "RestedXP's classic talent guides on Era")
+  check(ns.DangerData and ns.DangerData.Alliance and #ns.DangerData.Alliance > 0, "the danger list loads on Era")
+
+  -- QUEST_ACCEPTED (questIndex, questId): the route's first quest is taken by its ID
+  local r = E.route()
+  local s1 = r.steps[E.index()]
+  check(s1 and s1.act == "accept", "the Survival route starts with an accept (" .. tostring(s1 and s1.act) .. ")")
+  local i0 = E.index()
+  ns.Rec.start("era")
+  accept(s1.q, s1.title)
+  check(E.index() > i0, "accepting it moves the route on, though Era sends the log row first")
+  local got = {}
+  for _, ev in ipairs(ns.Rec.active().ev or {}) do if ev.e == "accept" then got[#got + 1] = ev.q end end
+  check(#got == 1 and got[1] == s1.q, "the run records the quest's ID, not its log row (" .. table.concat(got, ",") .. ")")
+  ns.Rec.stop()
+
+  -- the quest log through the old globals, complete from GetQuestLogTitle's 6th value
+  check(not C.isComplete(s1.q), "not complete yet")
+  finishObj(s1.q)
+  check(C.isComplete(s1.q), "complete from GetQuestLogTitle (Era has no IsQuestComplete)")
+  check(C.completedSet() == nil and not C.isTurnedIn(99999), "no completed-quest list on Era: asked one by one")
+
+  -- a slow event on a Hardcore realm is noted once in /zug errors
+  ns.On("SL_SLOWTEST", function() W.prof = W.prof + 150 end)
+  ns.Fire("SL_SLOWTEST"); ns.Fire("SL_SLOWTEST")
+  local slowNotes = 0
+  for _, e in ipairs(ZugzugLevelerDB.errors or {}) do if e.err:find("slow: SL_SLOWTEST", 1, true) then slowNotes = slowNotes + 1 end end
+  check(slowNotes == 1, "a handler over 100 ms on Hardcore is noted once (" .. slowNotes .. ")")
+  ns.On("SL_FASTTEST", function() W.prof = W.prof + 5 end)
+  ns.Fire("SL_FASTTEST")
+  check(not ns.slowEvents().SL_FASTTEST, "a quick one is not")
+
+  -- the snapshot tells the page the game and that this character plays hardcore
+  ns.Export.snapshot()
+  local ch = ZugzugLevelerCharDB.char
+  check(ch and ch.game == "era" and ch.hcRealm == true and ch.hardcore == true, "char.game / hcRealm / hardcore saved for the page")
+
+  zug("why"); tick(4)
   finish()
 end
 

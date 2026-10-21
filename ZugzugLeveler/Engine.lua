@@ -123,19 +123,26 @@ end
 -- (mode = "hc", "sc", "ssf", "ah", or two joined by a comma). The game says which
 -- this character is (C_GameRules.IsHardcoreActive, C_PlayerInfo.IsSelfFoundActive,
 -- 1.60.1 export); ZugzugLevelerCharDB.hardcore / .ssf (true/false) override it.
+-- Following one of RestedXP's hardcore guides counts as hardcore too, as in
+-- RXP (GuideWindow.lua: a #hardcore guide turns its hardcore setting on;
+-- RXPGuides.lua stepLogic.HardcoreCheck: `currentGuide.hardcore`).
 function E.hardcore()
   local v = cdb().hardcore
   if v ~= nil then return v end
-  return (C_GameRules and C.try(C_GameRules.IsHardcoreActive)) and true or false
+  if C.hardcoreRealm() then return true end
+  local r = E.route and E.route()
+  return (r and r.hardcore) and true or false
 end
 function E.ssf()
   local v = cdb().ssf
   if v ~= nil then return v end
-  return (C_PlayerInfo and C.try(C_PlayerInfo.IsSelfFoundActive)) and true or false
+  return C.selfFound()
 end
 local MODE_OK = {
   hc = function() return E.hardcore() end, sc = function() return not E.hardcore() end,
   ssf = function() return E.ssf() end, ah = function() return not E.ssf() end,
+  -- RXP's #hardcoreserver / #softcoreserver: the realm decides, no override
+  hcs = function() return C.hardcoreRealm() end, scs = function() return not C.hardcoreRealm() end,
 }
 function E.modeOk(s)
   if not s.mode then return true end

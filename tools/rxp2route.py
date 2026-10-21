@@ -1,4 +1,4 @@
-"""rxp2route.py -- convert RestedXP's Forever guides into zugzugleveler routes.
+"""rxp2route.py -- convert RestedXP's Forever or Classic Era guides into zugzugleveler routes.
 
 RestedXP Guides (https://github.com/RestedXP/RXPGuides) is licensed
 CC BY-NC-SA 4.0. Routes this tool writes are adaptations of that work, so
@@ -8,6 +8,7 @@ non-commercial use. The tool reads a local clone; it never downloads.
     python -I tools/rxp2route.py <RXPGuides clone> --race Human --class Warrior
         [--faction Alliance] [--start "1-6 Northshire"] [--xprate 1]
         [--hardcore] [--out ZugzugLeveler/routes/rxp] [--name "RXP Human Warrior"]
+        [--game era] [--group "Survival"]
 
 What the RXP format means was read from RXPGuides' own source, not guessed:
   GuideLoader.lua  ParseGuide / parseLine / applies (the << filter language)
@@ -15,13 +16,29 @@ What the RXP format means was read from RXPGuides' own source, not guessed:
   RXPGuides.lua    IsStepShown: #hardcore #softcore #season #som #xprate #ssf #ah
   GuideWindow.lua  #include Group\\Name@startLabel-endLabel
   DB/forever/db.lua  zone name -> uiMapID (addon.mapId)
+
+Classic Era (--game era), read from the same source:
+  RXPGuides.toc      Guides/GuideList-classic.xml and DB/classic.xml load on
+                     [AllowLoadGameType vanilla]; so does Guides/Talents/classic.xml
+  RXPGuides.lua      addon.game = "CLASSIC" below interface 16000 -- the word
+                     applies() matches (`uppercase == addon.game`)
+  GuideLoader.lua    applies(): "SoD" only on Season of Discovery (season 2);
+                     a guide with game tags (#classic #tbc ...) loads only where
+                     its own game is tagged
+  GuideList-classic.xml  the guide files Era loads; their SurvivalGuide folder is
+                     RestedXP's hardcore leveling guide (#hardcore on each guide)
+  DB/classic/db.lua  zone name -> uiMapID; Era gotos are zone coordinates
 """
 import argparse
 import os
 import re
 import sys
 
-GAME = "FOREVER"
+# per game: RXP's addon.game word, its DB folder, where its guides are
+GAMES = {
+    "forever": {"word": "FOREVER", "db": "forever"},
+    "era": {"word": "CLASSIC", "db": "classic", "list": "GuideList-classic.xml"},
+}
 ALLIANCE = {"Human", "Dwarf", "Gnome", "NightElf"}
 HORDE = {"Orc", "Troll", "Scourge", "Tauren"}
 CLASSES = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID"}
@@ -32,7 +49,8 @@ CLASSES = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", 
 class Who:
     """The character the route is for -- the inputs to RXP's applies()."""
 
-    def __init__(self, race, cls, faction, hardcore=False, ssf=False, xprate=1.0, modes=False):
+    def __init__(self, race, cls, faction, hardcore=False, ssf=False, xprate=1.0, modes=False, game="forever"):
+        self.game = game
         self.race = "Scourge" if race == "Undead" else race
         self.cls = cls.upper()
         self.faction = faction
@@ -84,7 +102,7 @@ class Who:
             self.unknown.add(up.lower())
             return True
         return (up == self.cls or e == self.race or e == self.faction
-                or up == GAME or e == "enUS")
+                or up == GAMES[self.game]["word"] or e == "enUS")
 
 
 # --------------------------------------------------------------- guides
@@ -102,21 +120,45 @@ def strip_codes(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+def guide_files(root, game):
+    """The guide files a game loads: Forever's folder, or for Era the files its
+    GuideList-classic.xml names (Season of Discovery's left out)."""
+    if game == "forever":
+        gdir = os.path.join(root, "Guides", "Forever")
+        for dirpath, _, files in os.walk(gdir):
+            if os.sep + "dungeon" in dirpath:
+                continue  # the dungeon variants are thin wrappers over the same routes
+            for fn in sorted(files):
+                if fn.endswith(".lua"):
+                    yield os.path.join(dirpath, fn)
+        return
+    xml = open(os.path.join(root, "Guides", GAMES[game]["list"]), encoding="utf-8").read()
+    for rel in re.findall(r'<Script\s+file="([^"]+)"', xml):
+        rel = rel.replace("\\", "/")
+        if "/SoD/" in rel or rel.endswith("Import.lua"):
+            continue
+        yield os.path.join(root, *rel.split("/"))
+
+
+GAME_TAGS = ("classic", "tbc", "wotlk", "cata", "mop", "df", "retail")
+
+
 def load_guides(root, who):
-    """Every Forever guide that applies to `who`, keyed (group, name)."""
-    gdir = os.path.join(root, "Guides", "Forever")
+    """Every guide of the game that applies to `who`, keyed (group, name)."""
     guides = {}
-    for dirpath, _, files in os.walk(gdir):
-        if os.sep + "dungeon" in dirpath:
-            continue  # the dungeon variants are thin wrappers over the same routes
-        for fn in sorted(files):
-            if not fn.endswith(".lua"):
+    for path in guide_files(root, who.game):
+        src = open(path, encoding="utf-8").read()
+        for m in REGISTER.finditer(src):
+            g = parse_guide(m.group(1), who, os.path.basename(path))
+            if not g:
                 continue
-            src = open(os.path.join(dirpath, fn), encoding="utf-8").read()
-            for m in REGISTER.finditer(src):
-                g = parse_guide(m.group(1), who, fn)
-                if g:
-                    guides[(g["group"], g["name"])] = g
+            # GuideLoader.lua: a guide with game tags loads only where its game is tagged
+            tags = [t for t in GAME_TAGS if t in g["head"]]
+            if who.game == "era" and tags and "classic" not in tags:
+                continue
+            if who.game == "era" and not era_season_ok(g["head"]):
+                continue
+            guides[(g["group"], g["name"])] = g
     return guides
 
 
@@ -124,17 +166,19 @@ def parse_guide(text, who, source):
     text = re.sub(r"--[^\r\n]*", "", text)
     head, steps, cur = {}, [], None
     skip_guide = False
+    in_head = True  # the header ends at the first step line, shown or filtered out
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             continue
         if line.startswith("step"):
+            in_head = False
             m = re.search(r"<<\s*(.+)", line)
             cur = {"lines": [], "tags": {}} if (not m or who.applies(m.group(1))) else None
             if cur is not None:
                 steps.append(cur)
             continue
-        if cur is None and not steps:
+        if in_head:
             # header: a whole-line "<< x" filters the guide; "#tag v << x" filters the tag
             m = re.match(r"^<<\s*(.+)$", line)
             if m:
@@ -168,8 +212,22 @@ def parse_guide(text, who, source):
             "head": head, "steps": steps, "source": source}
 
 
-# RXP's play-style tags and the mark they get in a route file (who.modes)
-MODE_TAGS = (("hardcore", "hc"), ("softcore", "sc"), ("ssf", "ssf"), ("ah", "ah"))
+# RXP's play-style tags and the mark they get in a route file (who.modes).
+# hardcoreserver / softcoreserver follow the realm, not a setting
+# (RXPGuides.lua stepLogic.HardcoreCheck: C_GameRules.IsHardcoreActive).
+MODE_TAGS = (("hardcore", "hc"), ("softcore", "sc"), ("ssf", "ssf"), ("ah", "ah"),
+             ("hardcoreserver", "hcs"), ("softcoreserver", "scs"))
+
+
+def era_season_ok(tags):
+    """RXPGuides.lua stepLogic.SeasonCheck on Classic Era / Hardcore, where
+    addon.GetSeason() is 0: `#season a,b` shows only if 0 is listed; #som only
+    on Season of Mastery; #era and #era/som are hidden only there."""
+    if "som" in tags:
+        return False
+    if "season" in tags:
+        return "0" in re.split(r"[,;\s]+", tags["season"].strip())
+    return True
 
 
 def step_mode(step):
@@ -180,7 +238,10 @@ def step_mode(step):
 
 def step_shown(step, who):
     t = step["tags"]
-    if "season" in t or "som" in t:
+    if who.game == "era":
+        if not era_season_ok(t):
+            return False
+    elif "season" in t or "som" in t:
         return False
     if not who.modes:
         if "hardcore" in t and not who.hardcore:
@@ -265,8 +326,8 @@ def chain(guides, who, start):
 
 # --------------------------------------------------------------- convert
 
-def map_ids(root):
-    src = open(os.path.join(root, "DB", "forever", "db.lua"), encoding="utf-8").read()
+def map_ids(root, game="forever"):
+    src = open(os.path.join(root, "DB", GAMES[game]["db"], "db.lua"), encoding="utf-8").read()
     m = re.search(r"addon\.mapId\s*=\s*\{(.*?)\n\}", src, re.S)
     return {k: int(v) for k, v in re.findall(r'\["([^"]+)"\]\s*=\s*(\d+)', m.group(1))}
 
@@ -478,7 +539,7 @@ def lua(v):
 KEYS = ["act", "q", "obj", "title", "text", "hint", "npc", "mobs", "use", "map", "x", "y", "cont", "wx", "wy", "r", "lvl", "xp", "opt", "mode", "need", "after", "loop", "path"]
 
 
-def write_route(path, name, steps, guides_used, commit, who, sections=()):
+def write_route(path, name, steps, guides_used, commit, who, sections=(), hardcore_guide=False):
     lines = [
         "-- %s -- generated by tools/rxp2route.py; do not edit by hand, re-run the tool." % os.path.basename(path),
         "--",
@@ -491,11 +552,21 @@ def write_route(path, name, steps, guides_used, commit, who, sections=()):
         "",
         "local _, ns = ...",
         "-- only for its race and class (Route.Skip), so 50 routes do not all sit in memory",
-        "if ns.Route.Skip and ns.Route.Skip(%s, %s) then return end" % (lua(who.race), lua(who.cls.upper())),
+        ("if ns.Route.Skip and ns.Route.Skip(%s, %s) then return end" % (lua(who.race), lua(who.cls.upper()))
+         if who.game == "forever" else
+         "if ns.Route.Skip and ns.Route.Skip(%s, %s, %s) then return end" % (lua(who.race), lua(who.cls.upper()), lua(who.game))),
         "",
         "ns.Route.Register({",
         "  name = %s," % lua(name),
         "  faction = %s," % lua(who.faction),
+    ]
+    if who.game != "forever":
+        lines.append("  game = %s," % lua(who.game))
+    if hardcore_guide:
+        # RestedXP's own hardcore guide (#hardcore on the guide): Coach.routeFor
+        # offers it first on a Hardcore realm
+        lines.append("  hardcore = true,")
+    lines += [
         "  credit = \"RestedXP Guides (CC BY-NC-SA 4.0)\",",
         "  sections = { " + ", ".join("{ from = %d, name = %s }" % (s["from"], lua(s["name"])) for s in sections) + " },",
         "  steps = {",
@@ -519,11 +590,17 @@ def write_index(out):
 
 
 def git_commit(root):
-    head = os.path.join(root, ".git", "HEAD")
+    gdir = os.path.join(root, ".git")
     try:
-        ref = open(head).read().strip()
+        if os.path.isfile(gdir):
+            # a worktree: .git is a file "gitdir: <path>"
+            with open(gdir) as f:
+                gdir = os.path.join(root, f.read().strip()[len("gitdir:"):].strip())
+        with open(os.path.join(gdir, "HEAD")) as f:
+            ref = f.read().strip()
         if ref.startswith("ref:"):
-            ref = open(os.path.join(root, ".git", ref[5:])).read().strip()
+            with open(os.path.join(gdir, ref[5:])) as f:
+                ref = f.read().strip()
         return ref[:10]
     except OSError:
         return "unknown"
@@ -542,8 +619,12 @@ def main(argv=None):
     ap.add_argument("--hardcore", action="store_true", help="bake in hardcore (by default its steps are kept, marked, for the addon's option)")
     ap.add_argument("--ssf", action="store_true", help="bake in self-found (by default its steps are kept, marked)")
     ap.add_argument("--name", help="route name (default 'RXP <race> <class>')")
-    ap.add_argument("--out", default=os.path.join("ZugzugLeveler", "routes", "rxp"))
+    ap.add_argument("--out", help="default ZugzugLeveler/routes/rxp (Forever) or routes/era")
+    ap.add_argument("--game", choices=sorted(GAMES), default="forever")
+    ap.add_argument("--group", help="start only in a guide group whose name contains this text "
+                    "(Era: 'Survival' = RestedXP's hardcore Survival Guide)")
     a = ap.parse_args(argv)
+    a.out = a.out or os.path.join("ZugzugLeveler", "routes", "rxp" if a.game == "forever" else a.game)
 
     race = "Scourge" if a.race == "Undead" else a.race
     faction = a.faction or ("Alliance" if race in ALLIANCE else "Horde" if race in HORDE else None)
@@ -552,16 +633,20 @@ def main(argv=None):
     if a.cls.upper() not in CLASSES:
         ap.error("unknown class %s" % a.cls)
     # no --hardcore/--ssf: keep those steps, marked, so one route serves every play style
-    who = Who(race, a.cls, faction, a.hardcore, a.ssf, a.xprate, modes=not (a.hardcore or a.ssf))
+    who = Who(race, a.cls, faction, a.hardcore, a.ssf, a.xprate, modes=not (a.hardcore or a.ssf), game=a.game)
 
     guides = load_guides(a.rxp, who)
-    maps = map_ids(a.rxp)
+    maps = map_ids(a.rxp, a.game)
     if a.start:
         cands = [k for k in guides if k[1] == a.start]
     else:
         cands = [k for k, g in guides.items()
                  if g["head"].get("defaultfor") and who.applies(g["head"]["defaultfor"])
                  and re.match(r"^1-", g["name"])]
+    if a.group:
+        cands = [k for k in cands if a.group in k[0]]
+    elif a.game == "era":
+        cands = [k for k in cands if "Survival" not in k[0]]  # the speedrun guides unless asked
     cands.sort(key=lambda k: ("ADV" in k[1] or "AoE" in k[1], k))  # plain speedrun route before the Mage AoE variants
     if not cands:
         sys.exit("no starting guide for %s %s; pass --start (guides: %s)"
@@ -594,7 +679,8 @@ def main(argv=None):
     os.makedirs(a.out, exist_ok=True)
     fn = re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_") + ".lua"
     path = os.path.join(a.out, fn)
-    write_route(path, name, steps, used, git_commit(a.rxp), who, sections)
+    write_route(path, name, steps, used, git_commit(a.rxp), who, sections,
+                hardcore_guide=all("hardcore" in g["head"] for g in order))
     write_index(a.out)
 
     counts = {}

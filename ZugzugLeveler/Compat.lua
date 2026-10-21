@@ -87,7 +87,13 @@ end
 function C.isOnQuest(q) return (C_QuestLog and try(C_QuestLog.IsOnQuest, q)) and true or false end
 function C.isComplete(q)
   if C_QuestLog and C_QuestLog.IsComplete then return try(C_QuestLog.IsComplete, q) and true or false end
-  return try(IsQuestComplete, q) and true or false
+  if IsQuestComplete then return try(IsQuestComplete, q) and true or false end
+  -- Classic Era: neither is proven there; its own quest log reads isComplete,
+  -- GetQuestLogTitle's 6th value (Vanilla/QuestLogFrame.lua:150), 1 = done
+  local i = q and GetQuestLogIndexByID and try(GetQuestLogIndexByID, q)
+  if not (i and i > 0) then return false end
+  local isComplete = select(6, try(GetQuestLogTitle, i))
+  return type(isComplete) == "number" and isComplete > 0
 end
 function C.isTurnedIn(q) return (C_QuestLog and try(C_QuestLog.IsQuestFlaggedCompleted, q)) and true or false end
 
@@ -236,6 +242,23 @@ end
 -- [AllowLoadGameType camelot] tags did not keep the routes out on Mists (a Mists
 -- character was offered "RXP Undead Mage", 2026-10-18).
 function C.isForever() return (C_GameRules and C_GameRules.GetForeverExperiencePreset) and true or false end
+
+-- Which game: "forever", "era" (Classic Era, its Hardcore and Season realms
+-- included) or "mists" (Mists of Pandaria Classic, and any later classic).
+-- Era's own UI sets WOW_PROJECT_ID = WOW_PROJECT_CLASSIC
+-- (Gethe/wow-ui-source classic_era, Blizzard_FrameXMLBase/Vanilla/Constants.lua:97);
+-- Mists sets WOW_PROJECT_MISTS_CLASSIC. Forever is told by its own API first.
+function C.game()
+  if C.isForever() then return "forever" end
+  if WOW_PROJECT_CLASSIC and WOW_PROJECT_ID == WOW_PROJECT_CLASSIC then return "era" end
+  return "mists"
+end
+function C.isEra() return C.game() == "era" end
+
+-- A Hardcore realm (C_GameRules.IsHardcoreActive: Era 1.15.9's
+-- GameRulesDocumentation.lua) / a self-found character (C_PlayerInfo.IsSelfFoundActive).
+function C.hardcoreRealm() return (C_GameRules and try(C_GameRules.IsHardcoreActive)) and true or false end
+function C.selfFound() return (C_PlayerInfo and try(C_PlayerInfo.IsSelfFoundActive)) and true or false end
 
 function C.now() return try(GetTime) or 0 end
 function C.epoch() return try(GetServerTime) or try(time) or 0 end

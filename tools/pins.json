@@ -1,6 +1,8 @@
 {
- "_note": "Source commits the shipped data was built from (tools/refresh.py). RXPGuides: route file headers; AllTheThings: data/Quests.lua header. wowsims: companion/web/data/mists and data/Talents_Mists.lua (tools/mop_gear.py, tools/mop_talents.py).",
+ "_note": "Source commits the shipped data was built from (tools/refresh.py). RXPGuides: route file headers; AllTheThings: data/Quests.lua header. wowsims: companion/web/data/mists and data/Talents_Mists.lua (tools/mop_gear.py, tools/mop_talents.py). rxp_era / att_era: Classic Era's routes (routes/era) and data/Quests_Era.lua, newer than Forever's pins.",
  "rxp": "be2fd72a04ddf343f5d126e9ee3c09bd7c9ba9d9",
  "att": "27a631a3ad7167dce78557645506c857ed8198be",
- "wowsims": "ec2c6c2552cc7e2a9555bb5eb89144dfb3b9c8d9"
+ "wowsims": "ec2c6c2552cc7e2a9555bb5eb89144dfb3b9c8d9",
+ "rxp_era": "2db1b0d84bf190c16769f0c3316c2c3db4c87c2d",
+ "att_era": "aa3cb73874e2d7fd94b375167afae92ea809431c"
 }

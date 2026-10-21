@@ -25,7 +25,7 @@ ns.Talents = T
 -- Blizzard_TalentUI/Mists does; glyphs: GetGlyphSocketInfo(i, group) -> its spell.
 local function mistsData()
   local _, cls = C.try(UnitClass, "player")
-  return not C.isForever() and ns.TalentDataMists and cls and ns.TalentDataMists[cls] or nil
+  return C.game() == "mists" and ns.TalentDataMists and cls and ns.TalentDataMists[cls] or nil
 end
 T.mists = function() return mistsData() ~= nil end
 
@@ -90,7 +90,9 @@ end
 
 function T.guides()
   local _, cls = C.try(UnitClass, "player")
-  return C.isForever() and ns.TalentData and cls and ns.TalentData[cls] or {} -- RestedXP's Forever talents
+  -- RestedXP's classic talent guides: RXPGuides.toc loads them on Forever and Era
+  -- alike (Guides/Talents/classic.xml [AllowLoadGameType vanilla,camelot])
+  return C.game() ~= "mists" and ns.TalentData and cls and ns.TalentData[cls] or {}
 end
 
 function T.guide()
@@ -118,6 +120,14 @@ end
 function T.rank(tab, row, col)
   if not (C_SpecializationInfo and C_SpecializationInfo.GetTalentInfo) then return nil end
   local info = C.try(C_SpecializationInfo.GetTalentInfo, { specializationIndex = tab, tier = row, column = col })
+  if type(info) ~= "table" and GetNumTalents then
+    -- Classic Era's own talent frame asks by talentIndex and reads tier/column
+    -- off the answer (Blizzard_FrameXML/Vanilla/TalentFrameBase.lua): do the same
+    for i = 1, (C.try(GetNumTalents, tab) or 0) do
+      local t = C.try(C_SpecializationInfo.GetTalentInfo, { specializationIndex = tab, talentIndex = i })
+      if type(t) == "table" and t.tier == row and t.column == col then info = t; break end
+    end
+  end
   if type(info) ~= "table" then return nil end
   return info.rank or 0, info.name
 end

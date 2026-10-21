@@ -26,9 +26,13 @@ export let BOTTOM = ["MainHand", "SecondaryHand", "Ranged"];
 // CharacterRangedSlot only when C_PaperDollInfo.IsRangedSlotShown()), so bows,
 // guns and wands are main-hand weapons; Wowhead's pages are under /mop-classic/
 // (e.g. www.wowhead.com/mop-classic/item=90387).
+// Classic Era (and its Hardcore realms) scores items as Forever does: RestedXP's
+// classic and Forever stat weights are the same table (DB/classic and
+// DB/forever StatWeights.lua, checked 2026-10-20); only Wowhead's site differs.
 export function setGame(g) {
   GAME = g === "mists" ? "mists" : "forever";
-  WOWHEAD = GAME === "mists" ? "https://www.wowhead.com/mop-classic" : "https://www.wowhead.com/forever";
+  WOWHEAD = GAME === "mists" ? "https://www.wowhead.com/mop-classic"
+    : g === "era" ? "https://www.wowhead.com/classic" : "https://www.wowhead.com/forever";
   BOTTOM = GAME === "mists" ? ["MainHand", "SecondaryHand"] : ["MainHand", "SecondaryHand", "Ranged"];
 }
 export const isMists = () => GAME === "mists";

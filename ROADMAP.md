@@ -43,9 +43,10 @@ and always be able to find out why. Status as of 2026-10-18 (0.3.0-alpha).
    string table and translators; the quest and item names already come from the game.
 2. **"Train these now" with costs.** Class trainer spells per level with their price: no open data
    source found yet (RestedXP's guides only say "train your class spells").
-3. **Classic Era build.** A second TOC and a compatibility pass, plus routes from RestedXP's classic
-   guides (a different set: the converter is tuned to the Forever guides). Needs an Era client to
-   test on, and its interface number read from the game.
+3. **Classic Era past level 23.** Era and Hardcore are in (2026-10-20: RestedXP's Survival Guide
+   and speedrun routes, 1 to 21-23). RestedXP's free guides stop there; above it, quest log mode
+   (`/zug questlog`) follows your own quests. Needs an open 23-60 route source, and the coach
+   should offer quest log mode when a route runs out (it does not yet).
 4. **Mac installer and "open with the game".** The companion runs on a Mac; the setup program and
    the watcher use the Windows registry and Wow*.exe.
 5. **One-button updates.** Today the page links the release; installing it is running its setup.

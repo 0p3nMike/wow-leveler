@@ -1,6 +1,6 @@
-## Interface: 16001, 50504
+## Interface: 16001, 50504, 11509
 ## Title: zugzug_leveler
-## Notes: Leveling guide for WoW: Forever (RestedXP routes for every race and class) and Mists of Pandaria Classic (quest log mode): an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
+## Notes: Leveling guide for WoW: Forever and Classic Era / Hardcore (RestedXP routes for every race and class, its Survival Guide on Hardcore) and Mists of Pandaria Classic (quest log mode): an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
 ## Author: michael-slop
 ## Version: 0.3.0-alpha
 ## Category: Quests & Leveling
@@ -9,10 +9,13 @@
 ## SavedVariables: ZugzugLevelerDB
 ## SavedVariablesPerCharacter: ZugzugLevelerCharDB
 
-# One TOC for both games, as RXPGuides.toc does: a file tagged
-# [AllowLoadGameType camelot] loads only on Forever, [AllowLoadGameType mists]
-# only on Mists of Pandaria Classic. The routes, talents, professions plan and
-# danger list are Forever's; Mists gets its own quest data and quest log mode.
+# One TOC for every game, as RXPGuides.toc does: a file tagged
+# [AllowLoadGameType camelot] loads only on Forever, mists only on Mists of
+# Pandaria Classic, vanilla only on Classic Era (its Hardcore realms too).
+# Forever and Era share the talents, professions plan and danger list
+# (RestedXP's classic data); each has its own routes and quest data. Mists gets
+# its own quest data and quest log mode. Each data file is also picked at run
+# time by Compat.lua's C.game(), because a client ignored a tag once (2026-10-18).
 
 Compat.lua
 Events.lua
@@ -28,11 +31,12 @@ Assist.lua
 Splits.lua
 Downtime.lua
 MapPath.lua
-data\Danger.lua [AllowLoadGameType camelot]
-data\Professions.lua [AllowLoadGameType camelot]
+data\Danger.lua [AllowLoadGameType camelot, vanilla]
+data\Professions.lua [AllowLoadGameType camelot, vanilla]
 data\Quests.lua [AllowLoadGameType camelot]
 data\Quests_Mists.lua [AllowLoadGameType mists]
-data\Talents.lua [AllowLoadGameType camelot]
+data\Quests_Era.lua [AllowLoadGameType vanilla]
+data\Talents.lua [AllowLoadGameType camelot, vanilla]
 data\Talents_Mists.lua [AllowLoadGameType mists]
 data\Voice.lua
 QuestInfo.lua
@@ -56,5 +60,6 @@ Commands.lua
 Export.lua
 routes\Example.lua
 routes\rxp\routes.xml [AllowLoadGameType camelot]
+routes\era\routes.xml [AllowLoadGameType vanilla]
 routes\custom\Planner.lua
 routes\custom\Prefs.lua

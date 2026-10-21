@@ -26,8 +26,13 @@ local scanning = false
 local function key() return (C.try(GetRealmName) or "?") .. "-" .. (C.try(UnitFactionGroup, "player") or "?") end
 function A.prices() local p = ns.db.prices; return p and p[key()] end
 
+-- the auction window: AuctionHouseFrame on Forever, AuctionFrame on Classic Era
+-- (wow-ui-source classic_era: Blizzard_AuctionUI/Classic/Blizzard_AuctionUI.xml;
+-- Blizzard_AuctionHouseUI loads on cata and mists only)
+local function ahFrame() return _G.AuctionHouseFrame or _G.AuctionFrame end
+
 local function open()
-  local f = _G.AuctionHouseFrame
+  local f = ahFrame()
   return f and f.IsShown and C.try(f.IsShown, f)
 end
 
@@ -80,7 +85,7 @@ end)
 -- A Read prices button on the auction house window (a click is always allowed).
 local button
 ns.On("AUCTION_HOUSE_SHOW", function()
-  local f = _G.AuctionHouseFrame
+  local f = ahFrame()
   if button or not f then return end
   button = CreateFrame("Button", "ZugzugLevelerPricesButton", f, "UIPanelButtonTemplate")
   button:SetSize(110, 20)

@@ -435,8 +435,22 @@ end
 
 -- A new player has no route: offer RestedXP's for their race and class
 -- (tools/rxp2route.py names them "RXP <Race> <Class>", Skyborne with the faction).
+-- Classic Era has two (tools/routes.json): "RXP Survival <Race> <Class>",
+-- RestedXP's hardcore Survival Guide, and "RXP Era <Race> <Class>", its speedrun.
+-- Returns the one to offer first and the other: Survival first on a Hardcore
+-- realm (or when the player turned hardcore steps on), the speedrun elsewhere.
 local RACE_NAME = { Scourge = "Undead" }
 function Coach.routeFor()
+  if C.game() == "era" then
+    local _, race = C.try(UnitRace, "player")
+    local _, class = C.try(UnitClass, "player")
+    if type(race) ~= "string" or type(class) ~= "string" then return nil end
+    local who = ("%s %s"):format(RACE_NAME[race] or race, class:sub(1, 1) .. class:sub(2):lower())
+    local hc, sr = "RXP Survival " .. who, "RXP Era " .. who
+    hc, sr = Route.Get(hc) and hc or nil, Route.Get(sr) and sr or nil
+    if Eng().hardcore() then return hc or sr, hc and sr end
+    return sr or hc, sr and hc
+  end
   local _, race = C.try(UnitRace, "player")
   local _, class = C.try(UnitClass, "player")
   local faction = C.try(UnitFactionGroup, "player")
@@ -478,7 +492,7 @@ ns.On("PLAYER_ENTERING_WORLD", function()
     ns.cdb.route, ns.cdb.offeredRoute = nil, nil
   end
   if not on() or ns.cdb.route or ns.cdb.offeredRoute then return end
-  local name = Coach.routeFor()
+  local name, other = Coach.routeFor()
   if not name and not haveGuides() then
     -- no guide for this game: offer quest log mode
     local function offerLog()
@@ -496,7 +510,16 @@ ns.On("PLAYER_ENTERING_WORLD", function()
     if ns.cdb.route then return end
     ns.cdb.offeredRoute = true
     local aoe = Route.Get(name .. " AoE") and name .. " AoE"
-    if aoe then
+    if other then
+      -- Classic Era: RestedXP's hardcore Survival Guide, or its speedrun
+      local def = Route.Get(name)
+      local safe, fast = name, other
+      if not (def and def.hardcore) then safe, fast = other, name end
+      local why = Eng().hardcore() and "This is a Hardcore realm: one death ends the character. "
+        or ""
+      Coach.ask("route", ("No route yet. %sRestedXP has two for you: Survival (%s: built for hardcore, safer quests and pulls) or speedrun (%s: faster, riskier). Which one? Escape: neither for now."):format(why, safe, fast),
+        "Survival", "Speedrun", function() follow(safe) end, "/zug route use " .. safe .. " | /zug route use " .. fast, function() follow(fast) end)
+    elseif aoe then
       -- RestedXP has an AoE variant for this race and class (pulling packs, for mages)
       Coach.ask("route", ("No route yet. RestedXP has two for you: questing (%s), or AoE (%s: big pulls, faster but riskier). Which one? Escape: neither for now."):format(name, aoe),
         "Questing", "AoE", function() follow(name) end, "/zug route use " .. name .. " | /zug route use " .. aoe, function() follow(aoe) end)

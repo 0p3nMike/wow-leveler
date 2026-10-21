@@ -113,3 +113,51 @@ func TestMistsMapArtPath(t *testing.T) {
 		t.Fatal("the Mists zone list is embedded (web/data/zones-mists.json)")
 	}
 }
+
+// Classic Era (Hardcore realms run in its client): its own quest data and
+// routes/era, Forever's routes hidden, the classic profession plan kept.
+func TestEraGame(t *testing.T) {
+	wow := fakeWow(t)
+	addon := filepath.Join(wow, "_classic_era_", "Interface", "AddOns", "ZugzugLeveler")
+	for rel, body := range map[string]string{
+		"data/Quests.lua":                         "ns.QuestDB = {[1]={lvl=1}}\n",
+		"data/Quests_Era.lua":                     "ns.QuestDBEra = {[363]={lvl=1}}\n",
+		"data/Professions.lua":                    "ns.ProfData = {guides={}}\n",
+		"routes/rxp/RXP_Undead_Mage.lua":          "ns.Route.Register({ name = \"RXP Undead Mage\", steps = { { act = \"goto\" } } })\n",
+		"routes/era/RXP_Survival_Undead_Mage.lua": "ns.Route.Register({ name = \"RXP Survival Undead Mage\", game = \"era\", hardcore = true, steps = { { act = \"accept\", q = 363 } } })\n",
+	} {
+		p := filepath.Join(addon, filepath.FromSlash(rel))
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(body), 0o644)
+	}
+	s := NewServer(Paths{Wow: wow, Client: "_classic_era_"}, "127.0.0.1:7830")
+	if g := s.gameKey(); g != "era" {
+		t.Fatalf("1.15.9 is Classic Era, got %q", g)
+	}
+	if f, _ := s.questFile(); f != "data/Quests_Era.lua" {
+		t.Fatalf("Era reads data/Quests_Era.lua, got %s", f)
+	}
+	h := s.Routes(http.NotFoundHandler())
+	get := func(path string) string {
+		r := httptest.NewRequest("GET", "http://127.0.0.1:7830"+path, nil)
+		r.RemoteAddr = "127.0.0.1:5000"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	if b := get("/api/questdb"); !strings.Contains(b, `"363"`) || strings.Contains(b, `"1"`) {
+		t.Fatalf("Era quest data, not Forever's: %s", b)
+	}
+	if b := get("/api/routes"); !strings.Contains(b, "RXP Survival Undead Mage") || strings.Contains(b, `"RXP Undead Mage"`) {
+		t.Fatalf("Era's routes only: %s", b)
+	}
+	if b := get("/api/prof"); strings.TrimSpace(b) == "{}" {
+		t.Fatalf("the classic profession plan is Era's too: %s", b)
+	}
+	if b := get("/api/state"); !strings.Contains(b, `"game":"era"`) {
+		t.Fatalf("state names the game: %s", b)
+	}
+	if gs := listGames(wow, "_classic_era_"); !gs[0].Ready || !gs[0].Current {
+		t.Fatalf("Era is ready once the addon is in it: %+v", gs)
+	}
+}

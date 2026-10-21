@@ -77,6 +77,11 @@ function E.snapshot()
     raceID = raceID, sex = C.try(UnitSex, "player"),
     faction = C.try(UnitFactionGroup, "player"), level = lvl, xp = cur, xpMax = max, rested = rested,
     map = map, x = x, y = y, at = C.epoch(),
+    -- the game, and whether this character plays hardcore (a Hardcore realm,
+    -- a RestedXP hardcore route, or the option): the page then defaults the
+    -- Gear tab to RestedXP's Hardcore weights and says so
+    game = C.game(), hcRealm = C.hardcoreRealm() or nil,
+    hardcore = (ns.Engine and ns.Engine.hardcore()) or nil,
   }
   if ns.Prof then ns.cdb.profSnap = ns.Prof.mine() end
   E.avail()
@@ -214,7 +219,7 @@ local function spec()
   end
   -- Mists: the column picked in each of the six talent tiers (0 = none) and the
   -- glyphs' spells (GetTalentTierInfo / GetGlyphSocketInfo, as Talents.lua reads them)
-  if not C.isForever() and GetTalentTierInfo then
+  if C.game() == "mists" and GetTalentTierInfo then
     local grp = C.try(S.GetActiveSpecGroup) or 1
     out.tiers, out.glyphs = {}, {}
     for tier = 1, 6 do
@@ -418,7 +423,7 @@ function E.gear()
   local sp = 0
   for school = 2, 7 do sp = math.max(sp, plain(C.try(GetSpellBonusDamage, school)) or 0) end
   g.stats.spell = sp
-  if not C.isForever() then g.stats.r = E.ratings() end
+  if C.game() == "mists" then g.stats.r = E.ratings() end
   g.ilvl = plain(select(2, C.try(GetAverageItemLevel)))
   g.money = plain(C.try(GetMoney))
   g.spec, g.skills = spec(), skills()

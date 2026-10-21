@@ -169,7 +169,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, map[string]any{
-		"client": s.P().Client, "addon": s.P().AddonDir(), "accounts": names, "expansion": s.expansion(),
+		"client": s.P().Client, "addon": s.P().AddonDir(), "accounts": names, "expansion": s.expansion(), "game": s.gameKey(),
 		"runs": runs, "chars": cs, "files": files, "now": time.Now().Unix(), "errors": errs,
 	}, nil)
 }
@@ -213,6 +213,7 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 func (s *Server) allRoutes() (map[string]map[string]any, []map[string]any) {
 	byName := map[string]map[string]any{}
 	var sums []map[string]any
+	game := s.gameKey()
 	for _, f := range s.P().RouteFiles() {
 		v, err := s.load(f, func() (any, error) {
 			b, err := readFile(f)
@@ -230,6 +231,15 @@ func (s *Server) allRoutes() (map[string]map[string]any, []map[string]any) {
 		}
 		name, _ := def["name"].(string)
 		rel, _ := filepath.Rel(s.P().AddonDir(), f)
+		// a RestedXP route is for one game (Route.Skip in the addon): routes/rxp
+		// are Forever's, the others say so (game = "era")
+		g, _ := def["game"].(string)
+		if g == "" && strings.HasPrefix(filepath.ToSlash(rel), "routes/rxp/") {
+			g = "forever"
+		}
+		if g != "" && g != game {
+			continue
+		}
 		byName[name] = def
 		sums = append(sums, map[string]any{"name": name, "steps": len(list(def["steps"])),
 			"faction": def["faction"], "credit": def["credit"], "source": filepath.ToSlash(rel)})
@@ -443,8 +453,8 @@ func (s *Server) literal(rel, marker string) http.HandlerFunc {
 }
 
 // classicOnly: data for the 1-60 world (the classic profession plan, RestedXP's
-// dangerous mobs), which the addon loads on Forever only (TOC [AllowLoadGameType
-// camelot]); a later expansion's game gets {} (the page shows nothing).
+// dangerous mobs), which the addon loads on Forever and Classic Era (TOC
+// [AllowLoadGameType camelot,vanilla]); a later expansion's game gets {} (the page shows nothing).
 func (s *Server) classicOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.expansion() > 1 {

@@ -113,8 +113,11 @@ end
 -- take memory): true when the character is known and is not that race/class.
 -- UnitRace's second value ("Scourge") and UnitClass's second ("MAGE"), read
 -- while the addon's files load; unknown then -> load everything.
-function Route.Skip(race, class)
-  if not C.isForever() then return true end -- RestedXP's Forever routes (Compat.lua C.isForever)
+-- `game`: the game the file's RestedXP guides are for, "forever" when not given
+-- (routes/rxp) or "era" (routes/era); a route of another game never loads,
+-- whatever the TOC's [AllowLoadGameType] tags did (Compat.lua C.game).
+function Route.Skip(race, class, game)
+  if (game or "forever") ~= C.game() then return true end
   local _, r = C.try(UnitRace, "player")
   local _, c = C.try(UnitClass, "player")
   if type(r) ~= "string" or type(c) ~= "string" then return false end

@@ -1,6 +1,9 @@
 # zugzug_leveler
 
-A leveling addon for **World of Warcraft: Forever** (client 1.60.1, interface 16001).
+A leveling addon for **World of Warcraft: Forever** (client 1.60.1, interface 16001),
+**Classic Era and its Hardcore realms** (1.15.9: RestedXP's Survival Guide and speedrun
+routes for every race and class, levels 1 to about 22) and **Mists of Pandaria Classic**
+(quest log mode).
 
 It shows you where to go next and finds the shortest order to do your quests in,
 from where you are standing. It also tracks how fast you are leveling and where

@@ -21,10 +21,12 @@ local C = ns.C
 local QI = {}
 ns.QInfo = QI
 
--- data/Quests.lua sets ns.QuestDB (Forever), data/Quests_Mists.lua ns.QuestDBMists:
--- each game reads its own, even if both files were loaded
+-- data/Quests.lua sets ns.QuestDB (Forever), data/Quests_Mists.lua ns.QuestDBMists,
+-- data/Quests_Era.lua ns.QuestDBEra: each game reads its own, even if all were loaded
 local function DB()
-  if not C.isForever() and ns.QuestDBMists then return ns.QuestDBMists end
+  local g = C.game()
+  if g == "mists" then return ns.QuestDBMists or {} end
+  if g == "era" then return ns.QuestDBEra or {} end
   return ns.QuestDB or {}
 end
 QI.db = DB

@@ -5,7 +5,8 @@
 -- AllTheThings (github.com/ATTWoWAddon/AllTheThings, MIT License) ships a built
 -- database per game; db/Camelot is Forever's (its TOC lists Interface 16001),
 -- db/Mists is Mists of Pandaria Classic's (written to data/Quests_Mists.lua,
--- loaded by ZugzugLeveler_Mists.toc; loot "-": the page's loot index is Forever's).
+-- loaded by ZugzugLeveler_Mists.toc; loot "-": the page's loot index is Forever's),
+-- db/Vanilla is Classic Era's (data/Quests_Era.lua, ns.QuestDBEra).
 -- Each category file registers a handler for "OnBuildDataCache" that builds a
 -- tree of h()/m()/q()/n()/qo()... constructors. This runs those files with
 -- stand-in constructors that only record what they are given, then keeps each
@@ -34,9 +35,9 @@
 local dir, commit, out = arg[1], arg[2] or "unknown", arg[3] or "ZugzugLeveler/data/Quests.lua"
 assert(dir, "usage: luajit tools/att2quests.lua <db/<game>/Categories> <commit> [out] [loot out | -]")
 local db = dir:gsub("[/\\]+$", ""):match("([^/\\]+)[/\\]Categories$") or "Camelot"
-local GAME = ({ Camelot = "WoW Forever", Mists = "Mists of Pandaria Classic" })[db] or db
+local GAME = ({ Camelot = "WoW Forever", Mists = "Mists of Pandaria Classic", Vanilla = "Classic Era" })[db] or db
 -- each game's table has its own name (QuestInfo.lua reads the one for the game it runs in)
-local VAR = ({ Mists = "ns.QuestDBMists" })[db] or "ns.QuestDB"
+local VAR = ({ Mists = "ns.QuestDBMists", Vanilla = "ns.QuestDBEra" })[db] or "ns.QuestDB"
 
 -- db/Mists picks a provider by faction with Enum.FlightPathFaction (Horde 1, Alliance 2)
 Enum = Enum or { FlightPathFaction = { Horde = 1, Alliance = 2 } }

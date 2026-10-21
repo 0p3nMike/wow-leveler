@@ -14,9 +14,18 @@ local handlers = {}
 local frame = CreateFrame("Frame")
 local reported = {}
 
-local function dispatch(event, ...)
-  local list = handlers[event]
-  if not list then return end
+-- Hardcore realms cap how long an addon's script may run: RestedXP's
+-- RXPGuides.lua says "During patch 1.15.9 Lua scripts have a maximum run time
+-- of 200ms (HC only)" and loads its guides in slices there. Blizzard's 1.15.9
+-- source has no game rule for it, so it is measured, not assumed: on a
+-- Hardcore realm each event's handlers are timed (debugprofilestop,
+-- FrameScriptDocumentation.lua) and one taking over SLOW_MS is noted once in
+-- /zug errors, by event name.
+local SLOW_MS = 100
+local timed -- nil until known; Compat.lua's C.hardcoreRealm after login
+local slow = {}
+
+local function run(event, list, ...)
   for i = 1, #list do
     local ok, err = pcall(list[i], ...)
     if not ok and not reported[err] then
@@ -26,6 +35,21 @@ local function dispatch(event, ...)
     end
   end
 end
+
+local function dispatch(event, ...)
+  local list = handlers[event]
+  if not list then return end
+  if not timed then return run(event, list, ...) end
+  local t0 = debugprofilestop()
+  run(event, list, ...)
+  local ms = debugprofilestop() - t0
+  if ms > SLOW_MS and not slow[event] then
+    slow[event] = true
+    ns.noteError(event, string.format("slow: %s took %d ms (hardcore realms stop a script at about 200 ms)", event, ms))
+  end
+end
+
+function ns.slowEvents() return slow end
 
 -- first: run before the handlers already there (Export reads a quest's
 -- rewards before Assist accepts it and the frame closes).
@@ -62,6 +86,14 @@ frame:SetScript("OnEvent", function(_, event, ...)
     ns.db.version = 1
     dispatch("SL_READY")
     return
+  end
+  if event == "PLAYER_ENTERING_WORLD" and timed == nil then
+    timed = (debugprofilestop and C.hardcoreRealm()) and true or false
+  end
+  if event == "QUEST_ACCEPTED" and select("#", ...) >= 2 then
+    -- Classic Era sends (questIndex, questId) (QuestLogDocumentation.lua in
+    -- wow-ui-source classic_era), Forever (questId): every handler gets the questID
+    return dispatch(event, (select(2, ...)))
   end
   dispatch(event, ...)
 end)

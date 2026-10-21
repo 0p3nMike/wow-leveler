@@ -191,6 +191,76 @@ leveling route and no open node-spawn data exist.
 - **Confirm in game**: transmog reading at the transmogrifier (`/zug tmog`), GetTalentTierInfo
   picks, glyph spells, reward lookups filling `db.items`, node GUIDs (gather once, `/zug farm list`).
 
+## Classic Era & Hardcore (added 2026-10-20)
+
+Hardcore is a realm type inside the Classic Era client (`_classic_era_`, 1.15.9.70003,
+product wow_classic_era), not a client of its own. Michael's Era characters are on Skull Rock.
+Sources read for this, all at the commits in pins.json (`rxp_era`, `att_era`):
+RXPGuides.toc / GuideList-classic.xml / GuideLoader.lua `applies` / RXPGuides.lua
+`SeasonCheck` + `HardcoreCheck` + `GetSeason`, Gethe/wow-ui-source branch `classic_era`
+(8165d4cd, 1.15.9.70003), ATT `db/Vanilla`.
+
+- **Game identity** (Compat.lua `C.game()` = forever / era / mists): Forever by its own API,
+  Era by `WOW_PROJECT_ID == WOW_PROJECT_CLASSIC` (Era's Blizzard_FrameXMLBase/Vanilla/Constants.lua:97).
+  Every old "not Forever = Mists" gate now asks C.game(). `C.hardcoreRealm()` /
+  `C.selfFound()` (C_GameRules.IsHardcoreActive, C_PlayerInfo.IsSelfFoundActive: both in
+  Era's API docs). TOC: `## Interface: 16001, 50504, 11509`, Era files tagged
+  `[AllowLoadGameType vanilla]` (RXP's tag for Era). **11509 is RXP's number and the
+  version pattern, not read from the game: confirm with `/dump GetBuildInfo()`.**
+- **Routes** (routes/era, 80 files, tools/routes.json `"game": "era"`): for all 40 Era
+  race/class pairs, `RXP Survival <Race> <Class>` = RestedXP's **Survival Guide** (its
+  hardcore guide, #hardcore on every guide; 1 to 21-23) and `RXP Era <Race> <Class>` = its
+  speedrun guides (1 to 21-22). Free RXP Era guides stop there; their 23-60 guides are not in
+  the repo. Route files carry `game = "era"` (Route.Skip's 3rd argument) and Survival ones
+  `hardcore = true`. The coach offers Survival first on a Hardcore realm, speedrun first
+  elsewhere, the other as the second button.
+- **rxp2route.py `--game era [--group Survival]`**: guides from GuideList-classic.xml (SoD
+  left out), zone coordinates via DB/classic/db.lua, `CLASSIC` as the game word, RXP's
+  season rule (`#season` must list 0; `#som` hidden), `#hardcoreserver`/`#softcoreserver`
+  kept as marks `hcs`/`scs` (Engine: the realm decides). Two converter fixes that Forever
+  shares: the guide header now ends at the first `step` line even when that step is filtered
+  out (step tags leaked into the header before), and `git_commit` follows a worktree's .git
+  file. **Forever's 53 routes still reproduce byte for byte at their pin.**
+- **Shared with Forever**, checked file against file: RestedXP's classic dangerous mobs = its
+  Forever list (whitespace only), classic stat weights = Forever's, the talent guides are the
+  classic ones on both. So data/Danger.lua, Talents.lua, Professions.lua load on Era too.
+  New: data/Quests_Era.lua (`ns.QuestDBEra`, 3,930 quests, att2quests.lua on db/Vanilla).
+- **Hardcore behaviour, as RXP does it**: following a hardcore route counts as hardcore
+  (Engine.hardcore: override, else Hardcore realm, else route.hardcore) so its hardcore-only
+  steps and Survival talent builds apply; the snapshot saves `char.game`, `char.hcRealm`,
+  `char.hardcore`, and the page's Gear tab then starts on RestedXP's **Hardcore** weights.
+  The addon never abandons quests (RXP hides its cleanup on Hardcore; we have none).
+- **Script time on Hardcore**: RXPGuides.lua says 1.15.9 stops a Lua script at 200 ms on
+  Hardcore realms. Not in Blizzard's source, so measured: on a Hardcore realm Events.lua
+  times every event's handlers and notes any over 100 ms once in `/zug errors`
+  ("slow: <event> took N ms"). File loads: each Era route file compiles in 3-6 ms
+  (lua 5.5 here), 420 ms for all 133 route files across separate loads. **Confirm in game.**
+- **Companion**: `gameKey()` (forever/era/mists) in games.go; `/api/state.game`; Era reads
+  Quests_Era.lua and lists only Era routes; Wowhead links go to /classic. `go test` has
+  TestEraGame.
+- **API differences fixed** (every API the addon calls was audited against the classic_era
+  source): `QUEST_ACCEPTED` is `(questIndex, questId)` on Era, so Events.lua hands every
+  handler the questID (before this the recorder stamped log row numbers); `C.isComplete` falls
+  back to GetQuestLogTitle's 6th value (no proven IsQuestComplete on Era); Talents.rank asks
+  by talentIndex as Era's talent frame does when tier/column gives nothing; the auction window
+  is `AuctionFrame` on Era; Flight.lua asks GetAllTaxiNodes for your continent (Era has no
+  GetTaxiMapID: **unverified which map Era wants**).
+- **Known gaps on Era** (quiet, no errors): the greeting window's auto accept / turn-in
+  (no GetActiveQuestID, GetAvailableQuestInfo has no questID); minimap dots (no
+  C_Minimap.GetViewRadius); the map pin (no user waypoints); item stats on the Gear tab (no
+  GetItemStats); the peon's TalkingHead frame (falls back to the gold edge); Enchanting's Craft
+  window is not read. `C_QuestLog.GetQuestsOnMap` exists but Era's map never shows quest
+  markers, so quest log mode may place fewer quests: **confirm in game**.
+- **Tests**: `luajit test\harness.lua ZugzugLeveler - era` (Era-shaped API on a Hardcore realm,
+  28 checks; the QUEST_ACCEPTED and isComplete checks were seen to fail without their fixes).
+  refresh.py now runs the mists and era modes too.
+- **Deploy**: `.\deploy.ps1 -Client _classic_era_` (done 2026-10-20; the companion watcher was
+  rebuilt with autostart.ps1 and lists Era as ready).
+- **First in-game check on Era**: full restart; AddOns list shows zugzug_leveler without "out of
+  date" (else fix 11509 from `/dump select(4, GetBuildInfo())`); a new character on Skull Rock is
+  offered Survival first; accept the first quest (the step moves on); `/zug errors` after an hour
+  of play for any "slow:" lines; open a flight master, then `/zug flight`.
+
 ## Verified / not verified
 
 | what | status |
@@ -432,4 +502,4 @@ The format rules came from reading RXPGuides' own source: `GuideLoader.lua`
 - Hearth / fly steps are done once you are on the map of the next positioned step. Steps before a done hearth /
   flight, on a map you are not on, are "left behind": `deferred[i] = "left"`, one chat line naming them. Level-ups
   keep them aside; `/swap back` (or accepting the quest) brings them back and `cdb.kept[i]` stops a re-set-aside.
-- Classic Era: not built. Add `ZugzugLeveler_Vanilla.toc` (Interface 11509) plus a compat pass when wanted.
+- Classic Era & Hardcore: built 2026-10-20, see "Classic Era & Hardcore" above.

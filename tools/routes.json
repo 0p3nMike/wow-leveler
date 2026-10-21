@@ -1,5 +1,5 @@
 {
- "_note": "Every route tools/refresh.py regenerates. The AoE path is from HANDOFF.md (Undead Mage AoE).",
+ "_note": "Every route tools/refresh.py regenerates. The AoE path is from HANDOFF.md (Undead Mage AoE). game era = Classic Era (routes/era): 'RXP Survival' = RestedXP's hardcore Survival Guide, 'RXP Era' = its speedrun guides (Alliance has them for Mages only).",
  "routes": [
   {
    "name": "RXP Dwarf Hunter",
@@ -278,6 +278,526 @@
    "name": "RXP Undead Warrior",
    "race": "Undead",
    "class": "Warrior"
+  },
+  {
+   "name": "RXP Survival Human Warrior",
+   "race": "Human",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Human Warrior",
+   "race": "Human",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Human Paladin",
+   "race": "Human",
+   "class": "Paladin",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Human Paladin",
+   "race": "Human",
+   "class": "Paladin",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Human Rogue",
+   "race": "Human",
+   "class": "Rogue",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Human Rogue",
+   "race": "Human",
+   "class": "Rogue",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Human Priest",
+   "race": "Human",
+   "class": "Priest",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Human Priest",
+   "race": "Human",
+   "class": "Priest",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Human Mage",
+   "race": "Human",
+   "class": "Mage",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Human Mage",
+   "race": "Human",
+   "class": "Mage",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Human Warlock",
+   "race": "Human",
+   "class": "Warlock",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Human Warlock",
+   "race": "Human",
+   "class": "Warlock",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Dwarf Warrior",
+   "race": "Dwarf",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Dwarf Warrior",
+   "race": "Dwarf",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Dwarf Paladin",
+   "race": "Dwarf",
+   "class": "Paladin",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Dwarf Paladin",
+   "race": "Dwarf",
+   "class": "Paladin",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Dwarf Hunter",
+   "race": "Dwarf",
+   "class": "Hunter",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Dwarf Hunter",
+   "race": "Dwarf",
+   "class": "Hunter",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Dwarf Rogue",
+   "race": "Dwarf",
+   "class": "Rogue",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Dwarf Rogue",
+   "race": "Dwarf",
+   "class": "Rogue",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Dwarf Priest",
+   "race": "Dwarf",
+   "class": "Priest",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Dwarf Priest",
+   "race": "Dwarf",
+   "class": "Priest",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Gnome Warrior",
+   "race": "Gnome",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Gnome Warrior",
+   "race": "Gnome",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Gnome Rogue",
+   "race": "Gnome",
+   "class": "Rogue",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Gnome Rogue",
+   "race": "Gnome",
+   "class": "Rogue",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Gnome Mage",
+   "race": "Gnome",
+   "class": "Mage",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Gnome Mage",
+   "race": "Gnome",
+   "class": "Mage",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Gnome Warlock",
+   "race": "Gnome",
+   "class": "Warlock",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Gnome Warlock",
+   "race": "Gnome",
+   "class": "Warlock",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival NightElf Warrior",
+   "race": "NightElf",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era NightElf Warrior",
+   "race": "NightElf",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival NightElf Hunter",
+   "race": "NightElf",
+   "class": "Hunter",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era NightElf Hunter",
+   "race": "NightElf",
+   "class": "Hunter",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival NightElf Rogue",
+   "race": "NightElf",
+   "class": "Rogue",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era NightElf Rogue",
+   "race": "NightElf",
+   "class": "Rogue",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival NightElf Priest",
+   "race": "NightElf",
+   "class": "Priest",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era NightElf Priest",
+   "race": "NightElf",
+   "class": "Priest",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival NightElf Druid",
+   "race": "NightElf",
+   "class": "Druid",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era NightElf Druid",
+   "race": "NightElf",
+   "class": "Druid",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Orc Warrior",
+   "race": "Orc",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Orc Warrior",
+   "race": "Orc",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Orc Hunter",
+   "race": "Orc",
+   "class": "Hunter",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Orc Hunter",
+   "race": "Orc",
+   "class": "Hunter",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Orc Rogue",
+   "race": "Orc",
+   "class": "Rogue",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Orc Rogue",
+   "race": "Orc",
+   "class": "Rogue",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Orc Shaman",
+   "race": "Orc",
+   "class": "Shaman",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Orc Shaman",
+   "race": "Orc",
+   "class": "Shaman",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Orc Warlock",
+   "race": "Orc",
+   "class": "Warlock",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Orc Warlock",
+   "race": "Orc",
+   "class": "Warlock",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Undead Warrior",
+   "race": "Undead",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Undead Warrior",
+   "race": "Undead",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Undead Rogue",
+   "race": "Undead",
+   "class": "Rogue",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Undead Rogue",
+   "race": "Undead",
+   "class": "Rogue",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Undead Priest",
+   "race": "Undead",
+   "class": "Priest",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Undead Priest",
+   "race": "Undead",
+   "class": "Priest",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Undead Mage",
+   "race": "Undead",
+   "class": "Mage",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Undead Mage",
+   "race": "Undead",
+   "class": "Mage",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Undead Warlock",
+   "race": "Undead",
+   "class": "Warlock",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Undead Warlock",
+   "race": "Undead",
+   "class": "Warlock",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Tauren Warrior",
+   "race": "Tauren",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Tauren Warrior",
+   "race": "Tauren",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Tauren Hunter",
+   "race": "Tauren",
+   "class": "Hunter",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Tauren Hunter",
+   "race": "Tauren",
+   "class": "Hunter",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Tauren Shaman",
+   "race": "Tauren",
+   "class": "Shaman",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Tauren Shaman",
+   "race": "Tauren",
+   "class": "Shaman",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Tauren Druid",
+   "race": "Tauren",
+   "class": "Druid",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Tauren Druid",
+   "race": "Tauren",
+   "class": "Druid",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Troll Warrior",
+   "race": "Troll",
+   "class": "Warrior",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Troll Warrior",
+   "race": "Troll",
+   "class": "Warrior",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Troll Hunter",
+   "race": "Troll",
+   "class": "Hunter",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Troll Hunter",
+   "race": "Troll",
+   "class": "Hunter",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Troll Rogue",
+   "race": "Troll",
+   "class": "Rogue",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Troll Rogue",
+   "race": "Troll",
+   "class": "Rogue",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Troll Priest",
+   "race": "Troll",
+   "class": "Priest",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Troll Priest",
+   "race": "Troll",
+   "class": "Priest",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Troll Shaman",
+   "race": "Troll",
+   "class": "Shaman",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Troll Shaman",
+   "race": "Troll",
+   "class": "Shaman",
+   "game": "era"
+  },
+  {
+   "name": "RXP Survival Troll Mage",
+   "race": "Troll",
+   "class": "Mage",
+   "game": "era",
+   "group": "Survival"
+  },
+  {
+   "name": "RXP Era Troll Mage",
+   "race": "Troll",
+   "class": "Mage",
+   "game": "era"
   }
  ]
 }

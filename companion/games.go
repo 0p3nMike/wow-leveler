@@ -147,11 +147,35 @@ func (s *Server) expansion() int {
 	return n
 }
 
+// gameKey: the addon's name for the current game, as its Compat.lua C.game()
+// says it: "forever" (1.60 and up), "era" (Classic Era and its Hardcore realms,
+// 1.x), "mists" (anything later). Forever when the version is unknown.
+func (s *Server) gameKey() string {
+	p := s.P()
+	parts := strings.Split(buildVersions(p.Wow)[flavor(p.clientDir())], ".")
+	major, _ := strconv.Atoi(parts[0])
+	minor := 0
+	if len(parts) > 1 {
+		minor, _ = strconv.Atoi(parts[1])
+	}
+	switch {
+	case major == 0 || (major == 1 && minor >= 60):
+		return "forever"
+	case major == 1:
+		return "era"
+	}
+	return "mists"
+}
+
 // questFile: the quest data the addon reads in this game, and the table it
-// sets (tools/att2quests.lua: ns.QuestDBMists on Mists of Pandaria Classic).
+// sets (tools/att2quests.lua: ns.QuestDBMists on Mists of Pandaria Classic,
+// ns.QuestDBEra on Classic Era).
 func (s *Server) questFile() (file, marker string) {
-	if s.expansion() == 5 {
+	switch s.gameKey() {
+	case "mists":
 		return "data/Quests_Mists.lua", "ns.QuestDBMists ="
+	case "era":
+		return "data/Quests_Era.lua", "ns.QuestDBEra ="
 	}
 	return "data/Quests.lua", "ns.QuestDB ="
 }

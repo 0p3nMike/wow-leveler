@@ -27,8 +27,8 @@ local C = ns.C
 local P = {}
 ns.Prof = P
 
--- the 1-300 plan is classic's: Forever only
-local function data() return (C.isForever() and ns.ProfData) or { guides = {}, trainers = {}, items = {} } end
+-- the 1-300 plan is classic's: Forever and Classic Era
+local function data() return (C.game() ~= "mists" and ns.ProfData) or { guides = {}, trainers = {}, items = {} } end
 local function on() return ns.db.prof ~= false end
 
 -- { name, rank, max, skillLine } for each profession you have.

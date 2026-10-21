@@ -41,9 +41,24 @@ function F.measured() return speeds().fly ~= nil end
 
 -- ------------------------------------------------------------- learning nodes
 
+-- The continent map you stand on (UiMapDetails.mapType 2 = Continent,
+-- MapConstantsDocumentation.lua), walking up parentMapID from your map.
+local function continentMap()
+  local id = C.mapPos()
+  for _ = 1, 6 do
+    local info = id and C_Map and C.try(C_Map.GetMapInfo, id)
+    if not info then return nil end
+    if info.mapType == 2 then return id end
+    id = info.parentMapID
+  end
+end
+
 function F.learn()
   if not (C_TaxiMap and C_TaxiMap.GetAllTaxiNodes) then return 0 end
-  local map = C.try(GetTaxiMapID)
+  -- Classic Era has no GetTaxiMapID (not in wow-ui-source classic_era; its taxi
+  -- window uses the old TaxiNode* calls): ask for the continent's nodes there.
+  -- **Unverified in game** which map Era's GetAllTaxiNodes wants.
+  local map = C.try(GetTaxiMapID) or (not GetTaxiMapID and continentMap())
   if not map then return 0 end
   cdb().flights = cdb().flights or {}
   local n = 0

@@ -1234,7 +1234,7 @@ async function gearScreen(center, side, details) {
   // choices: class, level, spec, kind
   const own = (snap.class || "").toUpperCase();
   const pref = JSON.parse(store.get("gear:" + S.charKey) || "{}");
-  const st = { cls: pref.cls || own || "MAGE", level: snap.level || 1, spec: pref.spec, kind: pref.kind || "Speedrun" };
+  const st = { cls: pref.cls || own || "MAGE", level: snap.level || 1, spec: pref.spec, kind: pref.kind || defaultKind(snap) };
   const clsPick = h("select", {}, G.CLASS_NAMES.map(k => h("option", { value: k }, k[0] + k.slice(1).toLowerCase())));
   const lvlIn = h("input", { type: "number", min: 1, max: levelCap(), style: "width:64px" });
   const specPick = h("select", {});
@@ -1609,13 +1609,19 @@ function talentsCard(data, cls, spec, level) {
   return card;
 }
 
+// RestedXP's weights come in Speedrun and Hardcore kinds; a hardcore character
+// (Export.lua char.hardcore: a Hardcore realm, a hardcore route or the option)
+// starts on Hardcore. A kind picked on the Gear tab wins.
+const defaultKind = snap => snap && snap.hardcore ? "Hardcore" : "Speedrun";
+
 // The weights the character's Gear tab uses (saved spec, talents, route).
 async function charWeights(c) {
   const weights = await cached("weights", weightsPath());
   const snap = c.db.char || {}, gear = c.db.gear || {};
   const pref = JSON.parse(store.get("gear:" + S.charKey) || "{}");
   const cls = (snap.class || "").toUpperCase();
-  return { cls, lvl: snap.level || 1, ...G.weightsForChar(weights.sets, cls, snap.level || 1, gear.spec && gear.spec.trees, c.db.route, pref.cls && pref.cls !== cls ? {} : pref, gear.spec && gear.spec.cur) };
+  const own = pref.cls && pref.cls !== cls ? {} : pref;
+  return { cls, lvl: snap.level || 1, ...G.weightsForChar(weights.sets, cls, snap.level || 1, gear.spec && gear.spec.trees, c.db.route, { ...own, kind: own.kind || defaultKind(snap) }, gear.spec && gear.spec.cur) };
 }
 
 // ------------------------------------------------------------------ quests
@@ -1992,7 +1998,7 @@ function go(tab) {
 
 async function refresh(first) {
   S.state = await api("/api/state");
-  G.setGame(isMists() ? "mists" : "forever");
+  G.setGame(isMists() ? "mists" : S.state.game === "era" ? "era" : "forever");
   WOWHEAD = G.WOWHEAD;
   S.cache = {};
   const pick = document.getElementById("charPick");
