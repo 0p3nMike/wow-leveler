@@ -30,6 +30,10 @@ local C = ns.C
 
 local P = {}
 ns.Peon = P
+-- Out of the released addon for now (Michael, 2026-10-23: "remove the orc voice
+-- mascot for now"): no peon, no option, /zug peon says so. The code stays;
+-- true brings him back (and his voice files from git history: media/voice/).
+P.ENABLED = false
 
 local CREATURE = 10556 -- Lazy Peon
 local ANIM = { talk = 60, yell = 64, ask = 65, stand = 0 }
@@ -43,7 +47,7 @@ local f, model, icon, bubble, text
 local talkUntil, hideAt = 0, 0
 local pokes, lastPoke = 0, 0
 
-local function on() return ns.db.peon == true end -- off unless the player turns him on
+local function on() return P.ENABLED and ns.db.peon == true end -- off unless the player turns him on
 
 local function atlas(tex, names)
   for _, n in ipairs(names) do

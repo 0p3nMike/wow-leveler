@@ -1,7 +1,7 @@
 package main
 
 // Updates: is there a newer zugzugleveler than the one installed? Asked of the
-// project's GitHub releases (api.github.com/repos/michael-slop/wow-leveler/
+// project's GitHub releases (api.github.com/repos/0p3nMike/wow-leveler/
 // releases/latest), at most every six hours, and only when the player has
 // switched it on in the page's Settings (it is the one thing besides Wowhead
 // that would reach outside this PC). The page then links the release, whose
@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var releasesURL = "https://api.github.com/repos/michael-slop/wow-leveler/releases/latest"
+var releasesURL = "https://api.github.com/repos/0p3nMike/wow-leveler/releases/latest"
 
 type release struct {
 	Tag   string `json:"tag_name"`

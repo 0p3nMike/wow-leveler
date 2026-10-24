@@ -33,12 +33,13 @@ func TestVoiceLine(t *testing.T) {
 		s.voiceLine(rec, req)
 		return rec
 	}
-	// the shipped voice: on from the start, its fixed lines from the companion itself
-	if vc := s.voiceConfig(); !vc.On || vc.Name != "peon" {
-		t.Fatalf("the peon's voice ships, on: %+v", vc)
+	// no voice ships in this version (the peon is out, 2026-10-23: web/peon/voice
+	// removed): off from the start, and a fixed line has nothing to play
+	if vc := s.voiceConfig(); vc.On || vc.Name != "peon" {
+		t.Fatalf("no shipped voice: off by default: %+v", vc)
 	}
-	if rec := get("Work%2C+work.", "192.168.1.5:1234"); rec.Code != 200 || rec.Header().Get("Content-Type") != "audio/ogg" {
-		t.Fatalf("a shipped line plays: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	if rec := get("Work%2C+work.", "192.168.1.5:1234"); rec.Code != 404 {
+		t.Fatalf("no shipped line to play: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
 	dir := s.voiceDir(defaultVoice)
 	os.MkdirAll(dir, 0o755)

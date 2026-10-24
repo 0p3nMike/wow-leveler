@@ -2,10 +2,10 @@
 ## Title: zugzug_leveler
 ## Notes: Leveling guide for WoW: Forever and Classic Era / Hardcore (RestedXP routes for every race and class, its Survival Guide on Hardcore) and Mists of Pandaria Classic (quest log mode): an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
 ## Author: michael-slop
-## Version: 0.3.0-alpha
+## Version: 0.4.0-alpha
 ## Category: Quests & Leveling
 ## IconTexture: Interface\AddOns\ZugzugLeveler\media\icon
-## X-Credits: RestedXP Guides (CC BY-NC-SA 4.0), AllTheThings (MIT), the peon after "[Warcraft] - Orc peon" by Northcliffe (CC BY-NC 4.0), his voice by a friend of the project
+## X-Credits: RestedXP Guides (CC BY-NC-SA 4.0), AllTheThings (MIT), the icon after "[Warcraft] - Orc peon" by Northcliffe (CC BY-NC 4.0)
 ## SavedVariables: ZugzugLevelerDB
 ## SavedVariablesPerCharacter: ZugzugLevelerCharDB
 

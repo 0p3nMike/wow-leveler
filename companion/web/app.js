@@ -15,6 +15,9 @@ import { backdrop } from "./backdrop.js";
 const bd = backdrop();
 
 let WOWHEAD = "https://www.wowhead.com/forever"; // the game's Wowhead (gear.js setGame, from /api/state)
+// The talking peon (bottom right, his voice, "ask the peon"): out of the released
+// page for now (Michael, 2026-10-23). The code stays; true brings him back.
+const PEON = false;
 // The game the page shows: Mists of Pandaria Classic is expansion 5 (games.go).
 const isMists = () => !!(S.state && S.state.expansion === 5);
 const levelCap = () => isMists() ? 90 : 60;
@@ -1706,7 +1709,7 @@ async function questLog(box) {
   };
   for (const [z, list] of zones) box.append(h("section", { class: "qzone" }, h("h3", {}, z), list.map(entry)));
   // Ask (ask.go): set up here; once a model is picked the peon answers (bottom right)
-  try {
+  if (PEON) try {
     const st = await api("/api/ask");
     box.append(st.ready ? h("p", { class: "sub qask" }, `Stuck on one? Ask the peon (bottom right): ${st.model} answers from your log.`) : askPanel());
   } catch { }
@@ -1863,7 +1866,7 @@ async function aboutTab(view) {
         h("dt", {}, "Character"), h("dd", {}, "You in the middle with what you wear. Left: where you are on the climb, the next stop and why. Right: gear upgrades and what to pick, professions and what pays, your numbers."),
         h("dt", {}, "Map & Quests"), h("dd", {}, "The zone with your route, danger, gear stops and quests to pick up; your quest log beside it. Click a quest to see it on the map."),
         h("dt", {}, "Plan & Runs"), h("dd", {}, "Where your time goes, recorded runs compared, how you play, what the route includes, and a planner that sends a route to the addon."),
-        h("dt", {}, "The peon"), h("dd", {}, "Bottom right. He says what the coach says, out loud (the ♪ button quiets him), and answers questions when a helper model is set up (Map & Quests). Few words, right facts. Click him."))),
+        PEON ? h("dt", {}, "The peon") : null, !PEON ? null : h("dd", {}, "Bottom right. He says what the coach says, out loud (the ♪ button quiets him), and answers questions when a helper model is set up (Map & Quests). Few words, right facts. Click him."))),
     sec("Commands",
       h("table", { class: "cmds" }, h("tbody", {},
         cmd("/zug", "show or hide the window"),
@@ -1876,7 +1879,7 @@ async function aboutTab(view) {
         cmd("/zug talents", "the talent to take next"),
         cmd("/zug prices", "read the auction house (at the auction house)"),
         cmd("/way x y", "your own arrow target"),
-        cmd("/zug peon on|off", "the talking peon in game (off by default)"),
+        PEON ? cmd("/zug peon on|off", "the talking peon in game (off by default)") : null,
         cmd("/zug help", "everything else")))),
     sec("When something is wrong",
       h("ul", { class: "notes" },
@@ -1897,7 +1900,7 @@ async function aboutTab(view) {
         h("li", {}, "Quest facts and loot lists: ", h("a", { href: "https://github.com/ATTWoWAddon/AllTheThings", target: "_blank", rel: "noopener" }, "AllTheThings"), ", MIT."),
         h("li", {}, "Profession data: ProfessionLevelingGuide, MIT."),
         h("li", {}, "Mists of Pandaria item stats, stat weights and talent builds: ", h("a", { href: "https://github.com/wowsims/mop", target: "_blank", rel: "noopener" }, "wowsims/mop"), ", MIT (Copyright (c) 2022 wowsims team)."),
-        h("li", {}, "The peon: ", h("a", { href: "https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868", target: "_blank", rel: "noopener" }, "“[Warcraft] - Orc peon”"), " by ", h("a", { href: "https://sketchfab.com/Northcliffe", target: "_blank", rel: "noopener" }, "Northcliffe"), ", ", h("a", { href: "http://creativecommons.org/licenses/by-nc/4.0/", target: "_blank", rel: "noopener" }, "CC BY-NC 4.0"), ", a fan-made remake of Blizzard's character; his lines are the Warcraft III peon's, spoken in a voice from a friend of the project's impressions, used with permission (rendered with Chatterbox TTS). Drawn with three.js (MIT)."),
+        h("li", {}, PEON ? "The peon: " : "The icon, after ", h("a", { href: "https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868", target: "_blank", rel: "noopener" }, "“[Warcraft] - Orc peon”"), " by ", h("a", { href: "https://sketchfab.com/Northcliffe", target: "_blank", rel: "noopener" }, "Northcliffe"), ", ", h("a", { href: "http://creativecommons.org/licenses/by-nc/4.0/", target: "_blank", rel: "noopener" }, "CC BY-NC 4.0"), PEON ? ", a fan-made remake of Blizzard's character; his lines are the Warcraft III peon's, spoken in a voice from a friend of the project's impressions, used with permission (rendered with Chatterbox TTS). Drawn with three.js (MIT)." : ", a fan-made remake of Blizzard's character."),
         h("li", {}, "Fonts: BigBlueTerm437 (VileR, Nerd Fonts, CC BY-SA 4.0), UnifrakturMaguntia (SIL OFL 1.1). Themes and backdrops from ", h("a", { href: "https://github.com/michael-slop/panefx", target: "_blank", rel: "noopener" }, "panefx"), "; the themes are their designers' (credited in panefx's THEMES.md); the flames are a port of msimpson's gist."),
         h("li", {}, "Quest and item links open Wowhead's pages for the game shown (Forever or Mists of Pandaria Classic). With pictures on, the 3D character, icons and maps come from Wowhead (World of Warcraft art is Blizzard's); jQuery (MIT) runs that viewer. Phone pairing draws its QR code with qrcode-generator (MIT)."),
         h("li", {}, "World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.")))));
@@ -1920,7 +1923,7 @@ async function loadChar() {
 // after the page, so a slow or missing WebGL never holds the page up.
 let peon = null, peonSaid = null, peonSaidAt = 0;
 let peonLines = { tabs: {} };
-import("./peon.js").then(async m => {
+(PEON ? import("./peon.js") : Promise.reject(new Error("off in this version"))).then(async m => {
   peonLines = await m.loadLines();
   let voice = false;
   try { voice = (await api("/api/voice")).on; } catch { }
@@ -1943,7 +1946,7 @@ import("./peon.js").then(async m => {
     });
   } catch { }
 })
-  .catch(e => console.warn("peon:", e.message));
+  .catch(e => { if (PEON) console.warn("peon:", e.message); });
 // The coach's words as the peon says them: caveman efficiency, the facts kept.
 // "Step 337 of 551: Do Disrupt the Attacks (55.6, 26.6)" -> "Do: Disrupt the Attacks. At 55.6 26.6."
 function peonSpeak(line) {
@@ -2188,7 +2191,7 @@ function settingsPanel() {
       h("p", { class: "sub" }, "Off by default. Wowhead's terms of use do not allow downloads by programs other than a web browser, which is how the companion would get them, so this is your call for your own PC. With it off the page uses only what your game reports, and the 3D character is in the game: /zug model."),
       h("label", {}, up, " Tell me when a new version is out.", upMsg),
       h("p", { class: "sub" }, "Asks the project's GitHub page every few hours. Off by default: it is the only other thing that would reach outside this PC. A new version installs by running its setup over the old one; your saves stay."),
-      voiceBox);
+      PEON ? voiceBox : null);
   };
   btn.addEventListener("click", () => {
     drawer.hidden = !drawer.hidden;

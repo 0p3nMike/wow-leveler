@@ -56,7 +56,7 @@ function ns.errorReport()
     out[#out + 1] = ("%s  in %s: %s"):format(date and date("%Y-%m-%d %H:%M", e.at) or tostring(e.at), e.event, e.err)
   end
   out[#out + 1] = ""
-  out[#out + 1] = "Paste this in a new issue at https://github.com/michael-slop/wow-leveler/issues, or send it to whoever gave you the addon."
+  out[#out + 1] = "Paste this in a new issue at https://github.com/0p3nMike/wow-leveler/issues, or send it to whoever gave you the addon."
   return table.concat(out, "\n")
 end
 
@@ -134,7 +134,7 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
   local cmd, args = (msg or ""):match("^%s*(%S*)%s*(.-)%s*$")
   cmd = cmd:lower()
   if cmd == "" then ns.UI.toggle()
-  elseif cmd == "help" then for _, l in ipairs(HELP) do C.print(l) end
+  elseif cmd == "help" then for _, l in ipairs(HELP) do if ns.Peon.ENABLED or not l:find("^/zug peon") then C.print(l) end end
   elseif cmd == "rec" then
     local sub, rest = args:match("^(%S*)%s*(.-)$")
     if sub == "start" then
@@ -167,6 +167,7 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
     else ns.UI.showText("Error report", ns.errorReport()) end
   elseif cmd == "talents" or cmd == "talent" then ns.Talents.command(args)
   elseif cmd == "party" then ns.Party.toggle(args ~= "off"); C.print("sharing your route place with your party: %s", args ~= "off" and "on" or "off")
+  elseif cmd == "peon" and not ns.Peon.ENABLED then C.print("the peon is not in this version")
   elseif cmd == "peon" then
     local v = args == "" and not (ns.db.peon == true) or (args ~= "" and args ~= "off")
     ns.Peon.toggle(v); C.print("the peon: %s", v and "on" or "off")

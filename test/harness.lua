@@ -1459,6 +1459,12 @@ do
   local pf = _G.ZugzugLevelerPeon
   check(pf and _G.ZugzugLevelerPeonModel and _G.ZugzugLevelerPeonSays, "the peon's portrait, model and speech panel")
   check(not pf:IsShown() and ns.Peon.last == nil, "off by default: hidden, and he said nothing")
+  -- out of this version (Peon.ENABLED false, 2026-10-23): /zug peon cannot bring him
+  check(ns.Peon.ENABLED == false, "the peon is out of the released addon")
+  zug("peon on")
+  check(not pf:IsShown() and ZugzugLevelerDB.peon ~= true, "/zug peon on does nothing while he is out")
+  -- the rest tests him as he will be when he comes back
+  ns.Peon.ENABLED = true
   zug("peon")
   check(pf:IsShown(), "/zug peon turns him on")
   local played = {}
@@ -1497,6 +1503,8 @@ do
   check(ns.Peon.last ~= "unheard", "and he stays quiet")
   zug("peon on")
   check(pf:IsShown(), "/zug peon on brings him back")
+  zug("peon off")
+  ns.Peon.ENABLED = false
 end
 
 -- a new character with both a questing and an AoE route is asked which
@@ -1838,7 +1846,8 @@ ns.DangerData = realData; ns.Danger.reset()
 check(W.addonCategory and W.addonCategory.name == "zugzug_leveler", "registered under Options > AddOns")
 local nCheck, nDrop = 0, 0
 for _, s in pairs(W.settings) do if s.options then nDrop = nDrop + 1 else nCheck = nCheck + 1 end end
-check(nCheck == 26 and nDrop == 3, ("26 toggles and 3 dropdowns (%d, %d)"):format(nCheck, nDrop))
+-- 26 with the peon's; his is left out while Peon.ENABLED is false
+check(nCheck == 25 and nDrop == 3 and not W.settings.ZUGZUG_PEON, ("25 toggles (no peon) and 3 dropdowns (%d, %d)"):format(nCheck, nDrop))
 -- play styles: hardcore / self-found steps, from the game or the panel
 check(ns.Engine.applies({ act = "goto", mode = "sc" }) and not ns.Engine.applies({ act = "goto", mode = "hc" }), "not hardcore: softcore steps in, hardcore ones out")
 C_GameRules = { IsHardcoreActive = function() return true end, GetForeverExperiencePreset = function() return 1 end }

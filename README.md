@@ -17,10 +17,9 @@ your time goes.
 | | |
 |---|---|
 | **Routes** | RestedXP's open Forever guides as step-by-step routes for every race and class (levels 1 to about 21), plus an Undead Mage AoE route. A new character is offered its own (questing or AoE when both exist). RestedXP's hardcore and self-found steps follow the game's own setting for the character (or the options panel). |
-| **First run** | The peon says hello and asks three things, one at a time: fastest leveling or completion, which route, and live updates for the page. |
-| **The peon** | Your helper, in game and on the page. In game (off by default: `/zug peon on`) he sits beside the window in Blizzard's talking-head frame and says what the coach says (heads-ups, questions, a new talent point, "work complete"). On the page he is a Warcraft III style portrait: 3D, talking, with XP and route step under him like health and mana, and the page's AI helper answers through him when one is set up. Click him. Not too often. |
+| **First run** | The coach asks three things, one at a time: fastest leveling or completion, which route, and live updates for the page. |
 | **Pause** | The button beside Sync (or `/zug pause`, or a key): a detour of your own, like flying to Thunder Bluff for a flight path. Nothing is timed, the coach stays quiet, the arrow rests (it drifts and sweeps like an idle compass), and a `/way` you set still guides you. |
-| **Talents** | Which talent to take next, from RestedXP's talent guides for your class ("Survival" builds for hardcore). The window shows what is due; the peon says it on level-up. `/zug talents`. |
+| **Talents** | Which talent to take next, from RestedXP's talent guides for your class ("Survival" builds for hardcore). The window shows what is due. `/zug talents`. |
 | **Party** | Levelling with a friend: party members with the addon see each other's step ("2 steps ahead"), level and quest progress in the window. Nothing is saved. |
 | **Map** | The route on the world map and minimap, plus the objective areas of the quests in your log (orange diamonds), from AllTheThings. |
 | **Coach** | `/zug why` says what the step wants and why: the guide part it belongs to, why the route is going to another zone, whether you are on level, and which of your quests it skips. It asks (a yes/no popup) when you seem stuck or off the route, never in combat. |
@@ -61,7 +60,8 @@ Windows-only.
 
 **By hand:**
 1. Download this repository (Code → Download ZIP).
-2. Copy the `ZugzugLeveler` folder into your Forever client's `Interface\AddOns\` folder.
+2. Copy the `ZugzugLeveler` folder into your game's `Interface\AddOns\` folder: `World of Warcraft\_classic_\` for
+   Mists of Pandaria Classic, `_classic_era_\` for Classic Era and Hardcore, `_classic_beta_\` for the Forever beta.
 3. Restart the game, then type `/zug` (or `/zugzug`) and `/zug options`.
 
 For development, `deploy.ps1` links the folder into the game with a junction, so `/reload` picks up edits.
@@ -108,7 +108,7 @@ uses only what your game reports, and `/zug model` shows your character in game.
 /zug talents [list|<name>]   the talent to take next
 /zug goal speed|complete     fastest leveling or completion
 /zug prices                  read the auction house (at the auction house)
-/zug peon on|off (off by default) · /zug party on|off · /zug errors
+/zug party on|off · /zug errors
 /zug help                    everything
 ```
 
@@ -144,13 +144,11 @@ for the same build (`Gethe/wow-ui-source`, branch `forever`).
 - **Profession data**: from [ProfessionLevelingGuide](https://github.com/icewrange/ProfessionLevelingGuide),
   MIT License, Copyright (c) 2026 icêheal (full text in `ZugzugLeveler/data/Professions.lua`).
 - **Talent guides**: adapted from RestedXP Guides' talent guides, CC BY-NC-SA 4.0, like the routes.
-- **The peon**: based on ["[Warcraft] - Orc peon"](https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868)
+- **The icon**: rendered from ["[Warcraft] - Orc peon"](https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868)
   by [Northcliffe](https://sketchfab.com/Northcliffe), licensed under
   [CC BY-NC 4.0](http://creativecommons.org/licenses/by-nc/4.0/) (non-commercial; credit the author). It is a
-  fan-made remake of Blizzard's Warcraft character, and his lines are the Warcraft III peon's: both
-  Blizzard's. The addon's icon and the page's logo are rendered from it. The page draws it with
-  [three.js](https://threejs.org) 0.170.0 (MIT). His voice is a friend of the project's impressions, used with
-  permission, rendered with Chatterbox TTS (`tools/peon_voice.py`).
+  fan-made remake of Blizzard's Warcraft character. The addon's icon and the page's logo are rendered
+  from it with [three.js](https://threejs.org) 0.170.0 (MIT).
 - **Everything else** (the addon code and tools) is © michael-slop. No open-source license has
   been chosen yet.
 - World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.

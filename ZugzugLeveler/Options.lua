@@ -143,7 +143,7 @@ function O.build()
   for _, c in ipairs(PLAY) do check(c) end
   for _, c in ipairs(STYLE) do check(c) end
   header("On screen")
-  for _, c in ipairs(SCREEN) do check(c) end
+  for _, c in ipairs(SCREEN) do if c[1] ~= "ZUGZUG_PEON" or ns.Peon.ENABLED then check(c) end end
   header("Help")
   for _, c in ipairs(HELP) do check(c) end
   header("What your route includes")
