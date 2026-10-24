@@ -31,7 +31,7 @@ func TestNewer(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"tag_name":"v0.3.0","html_url":"https://github.com/michael-slop/wow-leveler/releases/tag/v0.3.0","body":"notes"}`))
+		w.Write([]byte(`{"tag_name":"v0.3.0","html_url":"https://github.com/0p3nMike/wow-leveler/releases/tag/v0.3.0","body":"notes"}`))
 	}))
 	defer gh.Close()
 	old := releasesURL

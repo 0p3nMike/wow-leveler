@@ -5,3 +5,6 @@ companion/*.exe
 companion/*.exe~
 companion/bundle/
 dist/
+
+# Session handoff notes stay local (2026-10-24)
+HANDOFF.md

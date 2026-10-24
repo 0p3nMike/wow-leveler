@@ -1,7 +1,7 @@
 -- Assist.lua -- the clicking between steps: accept, turn in, sell greys.
 --
 -- Adapted from ghoul's GhoulBridge assist() / gossipPick() / greetingPick() /
--- sellGreys(), which are Michael's own. Changed for a real account:
+-- sellGreys() (the author's playtest bot). Changed for a real account:
 --   * By default it only acts on quests in the active route (/zug assist
 --     route|all|off). Hold Shift while talking to an NPC to do it yourself.
 --   * It never picks between rewards. With a choice it prints the one that

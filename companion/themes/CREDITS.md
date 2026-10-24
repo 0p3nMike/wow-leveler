@@ -4,7 +4,7 @@
 default look).
 
 The other 27 are copied unchanged from
-[panefx](https://github.com/michael-slop) (`assets/themes/`, MIT, © michael-slop),
+[panefx](https://github.com/0p3nMike/panefx) (`assets/themes/`, MIT, © 0p3nMike),
 which credits them as follows. Each palette is still its designers' work.
 
 | themes | source | licence |

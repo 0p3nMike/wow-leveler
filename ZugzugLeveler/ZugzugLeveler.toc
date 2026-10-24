@@ -1,7 +1,7 @@
 ## Interface: 16001, 50504, 11509
 ## Title: zugzug_leveler
 ## Notes: Leveling guide for WoW: Forever and Classic Era / Hardcore (RestedXP routes for every race and class, its Survival Guide on Hardcore) and Mists of Pandaria Classic (quest log mode): an arrow, a coach that says why, quest data from AllTheThings, XP/hour, and a companion page.
-## Author: michael-slop
+## Author: 0p3nMike
 ## Version: 0.4.1-alpha
 ## Category: Quests & Leveling
 ## IconTexture: Interface\AddOns\ZugzugLeveler\media\icon

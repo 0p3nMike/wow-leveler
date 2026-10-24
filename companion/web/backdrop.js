@@ -1,6 +1,6 @@
 // backdrop.js -- panefx's ASCII backdrops behind the page.
 //
-// panefx (github.com/michael-slop/panefx) draws animated ASCII behind terminal
+// panefx (github.com/0p3nMike/panefx) draws animated ASCII behind terminal
 // windows and on the desktop, and colours them from the theme. This is the
 // page's half of it: the same effects, ported line for line from its Rust
 // (src/flames.rs, rain.rs, plasma.rs, starfield.rs), on a canvas behind the

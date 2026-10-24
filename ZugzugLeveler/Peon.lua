@@ -30,8 +30,8 @@ local C = ns.C
 
 local P = {}
 ns.Peon = P
--- Out of the released addon for now (Michael, 2026-10-23: "remove the orc voice
--- mascot for now"): no peon, no option, /zug peon says so. The code stays;
+-- Out of the released addon for now (2026-10-23): no peon, no option,
+-- /zug peon says so. The code stays;
 -- true brings him back (and his voice files from git history: media/voice/).
 P.ENABLED = false
 

@@ -150,6 +150,6 @@ for the same build (`Gethe/wow-ui-source`, branch `forever`).
   [CC BY-NC 4.0](http://creativecommons.org/licenses/by-nc/4.0/) (non-commercial; credit the author). It is a
   fan-made remake of Blizzard's Warcraft character. The addon's icon and the page's logo are rendered
   from it with [three.js](https://threejs.org) 0.170.0 (MIT).
-- **Everything else** (the addon code and tools) is © michael-slop. No open-source license has
+- **Everything else** (the addon code and tools) is © 0p3nMike. No open-source license has
   been chosen yet.
 - World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.

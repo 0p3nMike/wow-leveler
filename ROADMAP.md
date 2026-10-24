@@ -19,7 +19,7 @@ and always be able to find out why. Status as of 2026-10-18 (0.3.0-alpha).
   - whether the chat log is written live (`/zug live check`); phone pairing; the installer on a
     second PC.
 - **Code-sign the setup** or tell the tester about "Windows protected your PC". Needs a
-  certificate (Michael's call: cost).
+  certificate (not bought yet: cost).
 
 ## Done (2026-10-18)
 

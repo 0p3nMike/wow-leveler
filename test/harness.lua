@@ -390,7 +390,7 @@ if GAME == "mists" then
   check(acc > 0 and ok, "quest givers on Twilight Highlands from the quest data, all takeable now (" .. acc .. ")")
   local levels = { [1] = { 1, 10 }, [461] = { 1, 5 }, [201] = { 80, 81 } } -- Durotar, Valley of Trials, Kelp'thar Forest
   C_Map.GetMapLevels = function(m) local l = levels[m]; if l then return l[1], l[2] end end
-  -- Hellfire Peninsula (map 100), Michael's case, 2026-10-18, with the real Mists data:
+  -- Hellfire Peninsula (map 100), a real playtest case, 2026-10-18, with the real Mists data:
   -- "Report to Nazgrel" (10875) is a breadcrumb to 10876 (nextQuests); "Weaken the
   -- Ramparts" (9572) is a Hellfire Ramparts dungeon quest (ATT: Instances only)
   do
@@ -997,7 +997,7 @@ W.x, W.y = 0.8, 0.8; tick(1)
 check(ns.Way.mode() == "work" and ns.Way.current().dim, "work with no loop: arrow dims on the spot")
 check(ns.Way.current().text == "Rat slain: 0/3", "dimmed arrow shows the objective")
 
--- RXP's .xp gates: level plus XP into it (the bug that sent Michael ahead too early)
+-- RXP's .xp gates: level plus XP into it (the bug that sent a playtester ahead too early)
 local E = ns.Engine
 W.level, W.xp, W.xpMax = 5, 1200, 2800
 check(not E.levelReached(5, 1940), "level 5 with 1200 xp: 5+1940 not reached")
@@ -1712,7 +1712,7 @@ check(math.abs(x - 35) < 1e-9 and math.abs(y) < 1e-9, "rotating minimap facing w
 local _, _, edge = MP.miniOffset({ cont = 0, wx = 1000, wy = 0 }, 0, 0, 0, nil, false, 200, 70)
 check(edge, "far point pinned to the rim")
 
--- optimizer: Michael's case. In the field, the route says "walk to town and
+-- optimizer: a real playtest case. In the field, the route says "walk to town and
 -- train", then come back to the field for the next quest, then town again.
 local O = ns.Optimizer
 zug("optimize suggest")

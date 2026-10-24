@@ -16,7 +16,7 @@ const bd = backdrop();
 
 let WOWHEAD = "https://www.wowhead.com/forever"; // the game's Wowhead (gear.js setGame, from /api/state)
 // The talking peon (bottom right, his voice, "ask the peon"): out of the released
-// page for now (Michael, 2026-10-23). The code stays; true brings him back.
+// page for now (2026-10-23). The code stays; true brings him back.
 const PEON = false;
 // The game the page shows: Mists of Pandaria Classic is expansion 5 (games.go).
 const isMists = () => !!(S.state && S.state.expansion === 5);
@@ -1433,7 +1433,7 @@ async function modelPanel(snap, worn, stage, mstat, lookBox, seen, tmog) {
   lookBox.hidden = !byHand;
   let opts = [], items = [], missing = [];
   const paint = async () => {
-    // no running commentary under the model (Michael, 2026-10-18): only a failure says something
+    // no running commentary under the model: only a failure says something
     mstat.textContent = "";
     try {
       await M.show(stage, { race, body: look.body || 0, items, options: mine.length ? mine : M.charOptions(opts, look) });
@@ -1888,7 +1888,7 @@ async function aboutTab(view) {
         h("li", {}, "The page is behind the game? It shows what the game last saved: press Sync, or ", h("code", {}, "/zug live on"), " for updates between saves."),
         h("li", {}, "The page keeps copies of your saves. If one is ever wiped, Character offers to restore it."))),
     sec("The backdrop: panefx",
-      h("p", {}, "The animation behind the page is ", h("a", { href: "https://github.com/michael-slop/panefx", target: "_blank", rel: "noopener" }, "panefx"),
+      h("p", {}, "The animation behind the page is ", h("a", { href: "https://github.com/0p3nMike/panefx", target: "_blank", rel: "noopener" }, "panefx"),
         "'s, the author's animated ASCII backdrops for Windows terminals and desktops. Its effects are ported here line for line: flames (msimpson's fire, the default), rain, plasma and starfield."),
       h("p", { class: "sub" }, "Like panefx, it wears the theme you pick: the flames' hot, warm, cool and dim come from the theme's accent, blue and magenta the way panefx works them out. Pick another or switch it off with Backdrop, top right. It runs at 30 frames a second, like the 3D models, stops while the tab is hidden, and stays off if your system asks for less motion.")),
     sec("Privacy",
@@ -1901,7 +1901,7 @@ async function aboutTab(view) {
         h("li", {}, "Profession data: ProfessionLevelingGuide, MIT."),
         h("li", {}, "Mists of Pandaria item stats, stat weights and talent builds: ", h("a", { href: "https://github.com/wowsims/mop", target: "_blank", rel: "noopener" }, "wowsims/mop"), ", MIT (Copyright (c) 2022 wowsims team)."),
         h("li", {}, PEON ? "The peon: " : "The icon, after ", h("a", { href: "https://sketchfab.com/3d-models/warcraft-orc-peon-2910e062ee1145b6b3b301436c0bc868", target: "_blank", rel: "noopener" }, "“[Warcraft] - Orc peon”"), " by ", h("a", { href: "https://sketchfab.com/Northcliffe", target: "_blank", rel: "noopener" }, "Northcliffe"), ", ", h("a", { href: "http://creativecommons.org/licenses/by-nc/4.0/", target: "_blank", rel: "noopener" }, "CC BY-NC 4.0"), PEON ? ", a fan-made remake of Blizzard's character; his lines are the Warcraft III peon's, spoken in a voice from a friend of the project's impressions, used with permission (rendered with Chatterbox TTS). Drawn with three.js (MIT)." : ", a fan-made remake of Blizzard's character."),
-        h("li", {}, "Fonts: BigBlueTerm437 (VileR, Nerd Fonts, CC BY-SA 4.0), UnifrakturMaguntia (SIL OFL 1.1). Themes and backdrops from ", h("a", { href: "https://github.com/michael-slop/panefx", target: "_blank", rel: "noopener" }, "panefx"), "; the themes are their designers' (credited in panefx's THEMES.md); the flames are a port of msimpson's gist."),
+        h("li", {}, "Fonts: BigBlueTerm437 (VileR, Nerd Fonts, CC BY-SA 4.0), UnifrakturMaguntia (SIL OFL 1.1). Themes and backdrops from ", h("a", { href: "https://github.com/0p3nMike/panefx", target: "_blank", rel: "noopener" }, "panefx"), "; the themes are their designers' (credited in panefx's THEMES.md); the flames are a port of msimpson's gist."),
         h("li", {}, "Quest and item links open Wowhead's pages for the game shown (Forever or Mists of Pandaria Classic). With pictures on, the 3D character, icons and maps come from Wowhead (World of Warcraft art is Blizzard's); jQuery (MIT) runs that viewer. Phone pairing draws its QR code with qrcode-generator (MIT)."),
         h("li", {}, "World of Warcraft and Blizzard Entertainment are trademarks of Blizzard Entertainment, Inc.")))));
 }
