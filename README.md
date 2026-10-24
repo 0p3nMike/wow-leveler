@@ -20,6 +20,7 @@ your time goes.
 | **First run** | The coach asks three things, one at a time: fastest leveling or completion, which route, and live updates for the page. |
 | **Pause** | The button beside Sync (or `/zug pause`, or a key): a detour of your own, like flying to Thunder Bluff for a flight path. Nothing is timed, the coach stays quiet, the arrow rests (it drifts and sweeps like an idle compass), and a `/way` you set still guides you. |
 | **Talents** | Which talent to take next, from RestedXP's talent guides for your class ("Survival" builds for hardcore). The window shows what is due. `/zug talents`. |
+| **Bag sorting** | `/zug sort`, the Sort button on your backpack, or a key: quest items and consumables first, junk last; quivers and other special bags are left alone. `/zug sort auto on` sorts after you loot (off by default). Forever uses Blizzard's own sort. |
 | **Party** | Levelling with a friend: party members with the addon see each other's step ("2 steps ahead"), level and quest progress in the window. Nothing is saved. |
 | **Map** | The route on the world map and minimap, plus the objective areas of the quests in your log (orange diamonds), from AllTheThings. |
 | **Coach** | `/zug why` says what the step wants and why: the guide part it belongs to, why the route is going to another zone, whether you are on level, and which of your quests it skips. It asks (a yes/no popup) when you seem stuck or off the route, never in combat. |
@@ -108,7 +109,7 @@ uses only what your game reports, and `/zug model` shows your character in game.
 /zug talents [list|<name>]   the talent to take next
 /zug goal speed|complete     fastest leveling or completion
 /zug prices                  read the auction house (at the auction house)
-/zug party on|off · /zug errors
+/zug sort [auto on|off] · /zug party on|off · /zug errors
 /zug help                    everything
 ```
 

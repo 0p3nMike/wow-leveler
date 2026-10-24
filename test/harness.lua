@@ -677,6 +677,82 @@ if GAME == "era" then
   local ch = ZugzugLevelerCharDB.char
   check(ch and ch.game == "era" and ch.hcRealm == true and ch.hardcore == true, "char.game / hcRealm / hardcore saved for the page")
 
+
+  -- bag sorting (Bags.lua): Era has no SortBags, so items are swapped one at a time
+  do
+    local CC, CI, gi = C_Container, C_Item.GetItemInfo, GetCursorInfo
+    local B = {}   -- bag -> { family, slots = { [slot] = { id, count } or false } }
+    local ITEMS = {
+      [6948] = { "Hearthstone", 1, 1, 15 }, [100] = { "Broken Fang", 0, 1, 15 }, [2589] = { "Linen Cloth", 1, 5, 7 },
+      [118] = { "Minor Healing Potion", 1, 5, 0 }, [200] = { "Gnoll Paw", 1, 1, 12 }, [300] = { "Rusty Sword", 2, 8, 2 },
+      [2512] = { "Rough Arrow", 1, 5, 6 },
+    }
+    local cursor, locks, picks = nil, {}, 0
+    local function put(bag, family, list) B[bag] = { family = family, slots = list } end
+    put(0, 0, { { 100, 1 }, { 2589, 5 }, false, { 6948, 1 } })
+    put(1, 0, { { 300, 1 }, { 118, 3 }, { 2589, 20 }, { 200, 1 } })
+    put(2, 1, { { 2512, 200 }, false }) -- a quiver: never sorted
+    C_Container = {
+      GetContainerNumSlots = function(b) return B[b] and #B[b].slots or 0 end,
+      GetContainerNumFreeSlots = function(b) return 0, B[b] and B[b].family or 0 end,
+      GetContainerItemInfo = function(b, sl)
+        local it = B[b] and B[b].slots[sl]
+        if not it then return nil end
+        local k = b .. ":" .. sl
+        local locked = (locks[k] or 0) > 0
+        if locked then locks[k] = locks[k] - 1 end
+        return { itemID = it[1], stackCount = it[2], isLocked = locked, quality = ITEMS[it[1]][2], itemName = ITEMS[it[1]][1] }
+      end,
+      PickupContainerItem = function(b, sl)
+        picks = picks + 1
+        if not cursor then cursor = { b, sl }; return end
+        local a, z = B[cursor[1]].slots, B[b].slots
+        local from, to = a[cursor[2]], z[sl]
+        if to and from and to[1] == from[1] then to[2] = to[2] + from[2]; a[cursor[2]] = false -- the same item: merged
+        else a[cursor[2]], z[sl] = to or false, from end
+        locks[cursor[1] .. ":" .. cursor[2]], locks[b .. ":" .. sl] = 1, 1
+        cursor = nil
+      end,
+    }
+    C_Item.GetItemInfo = function(id)
+      local t = ITEMS[tonumber(id)]
+      if t then return t[1], nil, t[2], t[3], nil, nil, nil, nil, nil, nil, 0, t[4] end
+    end
+    GetCursorInfo = function() return cursor and "item" or nil end
+    local function ids(bag) local o = {} for _, it in ipairs(B[bag].slots) do o[#o + 1] = it and it[1] or "-" end return table.concat(o, " ") end
+    local function total(id) local n = 0 for _, bg in pairs(B) do for _, it in ipairs(bg.slots) do if it and it[1] == id then n = n + it[2] end end end return n end
+    W.printed = {}
+    zug("sort")
+    check(ids(0) .. " | " .. ids(1) == "6948 200 118 300 | 2589 2589 100 -",
+      "sorted: hearthstone, quest item, potion, sword, cloth, junk last (" .. ids(0) .. " | " .. ids(1) .. ")")
+    check(total(2589) == 25 and total(118) == 3, "no stack lost or merged")
+    check(ids(2) == "2512 -", "the quiver keeps its arrows")
+    check(not cursor and not ns.Bags.busy(), "nothing left on the cursor, the sort finished")
+    local said = W.printed[#W.printed] or ""
+    check(said:find("bags sorted %(%d+ moves%)"), "it says so: " .. said)
+    local p0 = picks
+    zug("sort")
+    check(picks == p0 and (W.printed[#W.printed] or ""):find("0 moves"), "sorted bags: nothing moved")
+    -- out of order again, then combat and a full cursor stop it before any move
+    B[0].slots[1], B[1].slots[3] = B[1].slots[3], B[0].slots[1]
+    W.combat = true; p0 = picks
+    zug("sort")
+    check(picks == p0 and (W.printed[#W.printed] or ""):find("not in combat"), "never in combat")
+    W.combat = false
+    cursor = { 0, 4 }; p0 = picks
+    zug("sort")
+    check(picks == p0 + 0 and (W.printed[#W.printed] or ""):find("cursor"), "never with something on the cursor")
+    cursor = nil
+    -- after looting, when turned on (quietly)
+    zug("sort auto on")
+    check(ns.Bags.auto() and ZugzugLevelerDB.autoSort == true, "/zug sort auto on")
+    local n0 = #W.printed
+    fire("LOOT_CLOSED")
+    check(ids(0) == "6948 200 118 300" and #W.printed == n0, "sorted after looting, without a chat line")
+    zug("sort auto off")
+    check(W.settings.ZUGZUG_AUTOSORT ~= nil, "the option is in the panel")
+    C_Container, C_Item.GetItemInfo, GetCursorInfo = CC, CI, gi
+  end
   zug("why"); tick(4)
   finish()
 end
@@ -1846,8 +1922,19 @@ ns.DangerData = realData; ns.Danger.reset()
 check(W.addonCategory and W.addonCategory.name == "zugzug_leveler", "registered under Options > AddOns")
 local nCheck, nDrop = 0, 0
 for _, s in pairs(W.settings) do if s.options then nDrop = nDrop + 1 else nCheck = nCheck + 1 end end
--- 26 with the peon's; his is left out while Peon.ENABLED is false
-check(nCheck == 25 and nDrop == 3 and not W.settings.ZUGZUG_PEON, ("25 toggles (no peon) and 3 dropdowns (%d, %d)"):format(nCheck, nDrop))
+-- the peon's is left out while Peon.ENABLED is false; sort-after-looting is one
+check(nCheck == 26 and nDrop == 3 and not W.settings.ZUGZUG_PEON and W.settings.ZUGZUG_AUTOSORT,
+  ("26 toggles (no peon, auto-sort) and 3 dropdowns (%d, %d)"):format(nCheck, nDrop))
+-- bag sorting on Forever: Blizzard's own C_Container.SortBags, nothing moved by hand
+do
+  local sorted, picked = 0, 0
+  C_Container.SortBags = function() sorted = sorted + 1 end
+  local pick = C_Container.PickupContainerItem
+  C_Container.PickupContainerItem = function() picked = picked + 1 end
+  zug("sort")
+  check(sorted == 1 and picked == 0 and not ns.Bags.busy(), "Forever: /zug sort calls Blizzard's SortBags")
+  C_Container.SortBags, C_Container.PickupContainerItem = nil, pick
+end
 -- play styles: hardcore / self-found steps, from the game or the panel
 check(ns.Engine.applies({ act = "goto", mode = "sc" }) and not ns.Engine.applies({ act = "goto", mode = "hc" }), "not hardcore: softcore steps in, hardcore ones out")
 C_GameRules = { IsHardcoreActive = function() return true end, GetForeverExperiencePreset = function() return 1 end }

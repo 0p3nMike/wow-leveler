@@ -23,6 +23,7 @@ local HELP = {
   "/zug tmog                  what the game says about your transmog, slot by slot (it is saved at the transmogrifier)",
   "/zug talents [list|<name>|auto|off]  the talent to take next (RestedXP's talent guides)",
   "/zug party on|off         share your step and quest progress with party members who use the addon",
+  "/zug sort                  sort your bags · /zug sort auto on|off: sort after you loot (off by default)",
   "/zug peon on|off          the talking peon beside the window, off by default (says what the coach says; click him)",
   "/zug skip · /zug back · /zug step <n>",
   "/zug questlog (/zug ql)    no guide: your quest log + nearby quest givers, shortest order · ql debug · ql accept on|off",
@@ -167,6 +168,10 @@ SlashCmdList.ZUGZUGLEVELER = function(msg)
     else ns.UI.showText("Error report", ns.errorReport()) end
   elseif cmd == "talents" or cmd == "talent" then ns.Talents.command(args)
   elseif cmd == "party" then ns.Party.toggle(args ~= "off"); C.print("sharing your route place with your party: %s", args ~= "off" and "on" or "off")
+  elseif cmd == "sort" then
+    if args == "auto on" or args == "auto off" then
+      ns.Bags.setAuto(args == "auto on"); C.print("sort after looting: %s", ns.Bags.auto() and "on" or "off")
+    else ns.Bags.sort() end
   elseif cmd == "peon" and not ns.Peon.ENABLED then C.print("the peon is not in this version")
   elseif cmd == "peon" then
     local v = args == "" and not (ns.db.peon == true) or (args ~= "" and args ~= "off")

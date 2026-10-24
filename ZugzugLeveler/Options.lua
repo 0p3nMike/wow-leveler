@@ -58,6 +58,8 @@ local SCREEN = {
     function() return ns.db.mapPath ~= false end, function(v) ns.MapPath.toggle(v) end },
   { "SLOPLEV_DANGER", "Danger warnings", "Elites, rares and patrols near you and your next stop (RestedXP's Forever data).",
     function() return ns.db.danger ~= false end, function(v) ns.Danger.toggle(v) end },
+  { "ZUGZUG_AUTOSORT", "Sort bags after looting", "Sorts your bags a moment after a loot window closes. /zug sort (or the backpack's Sort button) sorts any time.",
+    function() return ns.Bags.auto() end, function(v) ns.Bags.setAuto(v) end },
   { "SLOPLEV_TARGET", "Target button", "Keybindable button that targets the step's mobs or NPC.",
     function() return ns.db.targetButton ~= false end, function(v) ns.db.targetButton = v; ns.Buttons.update() end },
 }
